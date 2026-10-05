@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.bangzachery.vitae.vitaemanager.profile.StackExchangeTest" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-10-05T12:37:05.761Z" hostname="WIN-7NBI6NB9343" time="0.02">
+  <properties/>
+  <testcase name="invalidArgumentsAreRejected()" classname="com.bangzachery.vitae.vitaemanager.profile.StackExchangeTest" time="0.001"/>
+  <testcase name="countsAndItemIdentitiesAreConservedAcrossAllNormalAmounts()" classname="com.bangzachery.vitae.vitaemanager.profile.StackExchangeTest" time="0.014"/>
+  <testcase name="leftPickupRemovesExactlyWhatCursorReceives()" classname="com.bangzachery.vitae.vitaemanager.profile.StackExchangeTest" time="0.001"/>
+  <testcase name="incompatibleItemsSwapEvenWithDifferentMaximums()" classname="com.bangzachery.vitae.vitaemanager.profile.StackExchangeTest" time="0.0"/>
+  <testcase name="fullStacksAndAbnormalLegacyStacksArePreserved()" classname="com.bangzachery.vitae.vitaemanager.profile.StackExchangeTest" time="0.0"/>
+  <testcase name="rightPickupRoundsOddStackUp()" classname="com.bangzachery.vitae.vitaemanager.profile.StackExchangeTest" time="0.0"/>
+  <testcase name="depositingIntoEmptySlotUsesCursorItemLimit()" classname="com.bangzachery.vitae.vitaemanager.profile.StackExchangeTest" time="0.001"/>
+  <testcase name="depositRespectsItemLimitAndRetainsOverflowOnCursor()" classname="com.bangzachery.vitae.vitaemanager.profile.StackExchangeTest" time="0.0"/>
+  <testcase name="armorCapacityPreventsOversizedPlacementAndSwap()" classname="com.bangzachery.vitae.vitaemanager.profile.StackExchangeTest" time="0.0"/>
+  <testcase name="emptyClickDoesNothing()" classname="com.bangzachery.vitae.vitaemanager.profile.StackExchangeTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

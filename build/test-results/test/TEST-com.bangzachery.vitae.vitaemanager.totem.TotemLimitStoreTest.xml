@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.bangzachery.vitae.vitaemanager.totem.TotemLimitStoreTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-10-05T12:37:05.978Z" hostname="WIN-7NBI6NB9343" time="0.031">
+  <properties/>
+  <testcase name="malformedYamlSchemaAndTypesAreNeverRewritten()" classname="com.bangzachery.vitae.vitaemanager.totem.TotemLimitStoreTest" time="0.007"/>
+  <testcase name="absentOverrideUsesConfigWithoutCreatingFile()" classname="com.bangzachery.vitae.vitaemanager.totem.TotemLimitStoreTest" time="0.002"/>
+  <testcase name="roundTripLimitSurvivesNewStoreInstanceAndReplacesAtomically()" classname="com.bangzachery.vitae.vitaemanager.totem.TotemLimitStoreTest" time="0.009"/>
+  <testcase name="failedReplacementKeepsDestinationAndRemovesTemporaryFile()" classname="com.bangzachery.vitae.vitaemanager.totem.TotemLimitStoreTest" time="0.005"/>
+  <testcase name="invalidSaveKeepsPreviousOverrideBytes()" classname="com.bangzachery.vitae.vitaemanager.totem.TotemLimitStoreTest" time="0.005"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

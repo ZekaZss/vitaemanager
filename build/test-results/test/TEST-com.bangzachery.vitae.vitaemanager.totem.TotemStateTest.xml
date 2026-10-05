@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.bangzachery.vitae.vitaemanager.totem.TotemStateTest" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-10-05T12:37:06.009Z" hostname="WIN-7NBI6NB9343" time="0.008">
+  <properties/>
+  <testcase name="loweringLimitPreservesExistingExcessCharges()" classname="com.bangzachery.vitae.vitaemanager.totem.TotemStateTest" time="0.001"/>
+  <testcase name="storedChargesRemainUsableDuringCooldownWithoutExtendingIt()" classname="com.bangzachery.vitae.vitaemanager.totem.TotemStateTest" time="0.0"/>
+  <testcase name="cooldownExpiresAtExactMillisecondBoundary()" classname="com.bangzachery.vitae.vitaemanager.totem.TotemStateTest" time="0.0"/>
+  <testcase name="invalidDataLimitOrClockRefusesTransition()" classname="com.bangzachery.vitae.vitaemanager.totem.TotemStateTest" time="0.003"/>
+  <testcase name="fatalChecksActualFinitePostReductionDamageIncludingEquality()" classname="com.bangzachery.vitae.vitaemanager.totem.TotemStateTest" time="0.0"/>
+  <testcase name="absorptionAddsExactlyOneChargeAndDoesNotStartCooldown()" classname="com.bangzachery.vitae.vitaemanager.totem.TotemStateTest" time="0.0"/>
+  <testcase name="remainingTimeRoundsUpWithoutLongOverflow()" classname="com.bangzachery.vitae.vitaemanager.totem.TotemStateTest" time="0.0"/>
+  <testcase name="cooldownResetKeepsCountAndEnablesRefill()" classname="com.bangzachery.vitae.vitaemanager.totem.TotemStateTest" time="0.001"/>
+  <testcase name="fullLimitOrActiveCooldownDoesNotMutateOriginal()" classname="com.bangzachery.vitae.vitaemanager.totem.TotemStateTest" time="0.0"/>
+  <testcase name="firstUseConsumesOneAndStartsFifteenHourCooldown()" classname="com.bangzachery.vitae.vitaemanager.totem.TotemStateTest" time="0.001"/>
+  <testcase name="expiredCooldownStartsNewWindowAndZeroDurationDisablesWaiting()" classname="com.bangzachery.vitae.vitaemanager.totem.TotemStateTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

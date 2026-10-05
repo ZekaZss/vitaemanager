@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.bangzachery.vitae.vitaemanager.whisper.WhisperAreaTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-10-05T12:37:06.018Z" hostname="WIN-7NBI6NB9343" time="0.003">
+  <properties/>
+  <testcase name="negativeCoordinatesAndVerticalEntryAreSupported()" classname="com.bangzachery.vitae.vitaemanager.whisper.WhisperAreaTest" time="0.001"/>
+  <testcase name="equalCornersMakeAOneBlockAreaAndSweptMovementCannotSkipIt()" classname="com.bangzachery.vitae.vitaemanager.whisper.WhisperAreaTest" time="0.0"/>
+  <testcase name="reversedCornersIncludeWholeBlocksAndRespectWorldAndUpperFace()" classname="com.bangzachery.vitae.vitaemanager.whisper.WhisperAreaTest" time="0.0"/>
+  <testcase name="oversizedAndOverflowingSelectionsAreRejected()" classname="com.bangzachery.vitae.vitaemanager.whisper.WhisperAreaTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

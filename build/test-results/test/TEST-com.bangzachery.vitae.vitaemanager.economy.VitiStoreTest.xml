@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.bangzachery.vitae.vitaemanager.economy.VitiStoreTest" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-10-05T12:37:05.641Z" hostname="WIN-7NBI6NB9343" time="0.105">
+  <properties/>
+  <testcase name="uppercaseLegacyUuidIsNotDuplicatedOnSave()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiStoreTest" time="0.021"/>
+  <testcase name="exactFieldsRemainAuthoritativeOverDoubleMirrors()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiStoreTest" time="0.004"/>
+  <testcase name="importsLegacyDoubleAndKeepsFractionalPrecisionAndPeak()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiStoreTest" time="0.003"/>
+  <testcase name="invalidYamlAndSchemaAreNeverReplacedOnInitialize()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiStoreTest" time="0.007"/>
+  <testcase name="failedReloadDoesNotReplaceSerializationBase()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiStoreTest" time="0.006"/>
+  <testcase name="failedAtomicReplacementPreservesDestinationAndRemovesTemporaryFile()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiStoreTest" time="0.012"/>
+  <testcase name="createsEmptyFileAndDoesNotCopyBundledSample()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiStoreTest" time="0.002"/>
+  <testcase name="rejectsNoteWithRetiredIdOrUnknownOwnerWithoutRewriting()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiStoreTest" time="0.008"/>
+  <testcase name="firstMigrationBacksUpExactOriginalAndPreservesUnknownFields()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiStoreTest" time="0.011"/>
+  <testcase name="roundtripKeepsTransferNotesDeliveryAndReceipts()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiStoreTest" time="0.019"/>
+  <testcase name="samplePlaceholderIsPreservedButNeverRanked()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiStoreTest" time="0.007"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

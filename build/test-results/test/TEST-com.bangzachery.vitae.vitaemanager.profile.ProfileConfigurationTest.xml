@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.bangzachery.vitae.vitaemanager.profile.ProfileConfigurationTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-10-05T12:37:05.746Z" hostname="WIN-7NBI6NB9343" time="0.014">
+  <properties/>
+  <testcase name="bundledMessagesValidateAndExistingConfigReceivesDefaultsWithoutRewrite()" classname="com.bangzachery.vitae.vitaemanager.profile.ProfileConfigurationTest" time="0.013"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

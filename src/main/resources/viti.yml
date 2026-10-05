@@ -1,0 +1,5 @@
+players:
+  UUID-PEMAIN:
+    name: "Player1"
+    balance: 500.0
+    highest_balance: 50000.0 # <- Ini yang akan dibaca oleh /viti board

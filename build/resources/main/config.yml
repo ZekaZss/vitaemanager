@@ -1,0 +1,113 @@
+config-version: 1
+
+core:
+  debug: false
+
+roleplay:
+  text-duration-ticks: 200
+  ooc-radius: 30
+  max-text-length: 256
+  carry-distance: 2
+
+totem:
+  limit: 3
+  cooldown-hours: 15
+  block-vanilla-resurrection: true
+
+items:
+  sneak-to-pickup: true
+
+integrations:
+  essentials:
+    block-economy-commands: true
+
+messages:
+  prefix: '<gold>Vitae</gold><dark_gray> » </dark_gray>'
+  no-permission: '<red>Kamu tidak punya izin untuk command ini.</red>'
+  help: |-
+    <yellow>/vitae help</yellow><gray> - Bantuan command yang tersedia.</gray>
+    <yellow>/vitae reload</yellow><gray> - Muat ulang config.yml dan blocked.yml.</gray>
+  usage: '<yellow>Gunakan /vitae help atau /vitae reload.</yellow>'
+  reloaded: '<green>config.yml berhasil dimuat ulang.</green>'
+  reload-failed: '<red>Reload gagal. Konfigurasi aktif tetap digunakan; cek console.</red>'
+  server-help: |-
+    <yellow>/vitae panel</yellow><gray> - Panel kontrol server.</gray>
+    <yellow>/vitae maintenance on|off</yellow><gray> - Mode maintenance.</gray>
+    <yellow>/vitae chat on|off</yellow><gray> - Aktifkan atau matikan chat.</gray>
+    <yellow>/vitae pvp on|off [dunia]</yellow><gray> - PvP per dunia.</gray>
+    <yellow>/vitae mobspawning on|off [dunia]</yellow><gray> - Spawn mob vanilla per dunia.</gray>
+  player-only: '<red>Command ini hanya untuk player.</red>'
+  world-not-found: '<red>Dunia tidak ditemukan. Console wajib menyebutkan nama dunia.</red>'
+  maintenance-kick: '<red><bold>SERVER MAINTENANCE</bold></red><newline><gray>Server sedang dalam perbaikan. Silakan kembali nanti.</gray>'
+  chat-muted: '<red>Chat sedang dimatikan oleh admin.</red>'
+  control-changed: '<green>Pengaturan berhasil diterapkan.</green>'
+  control-busy: '<yellow>Perubahan sebelumnya sedang disimpan. Coba lagi sebentar.</yellow>'
+  control-failed: '<red>Pengaturan gagal disimpan. State aktif tetap digunakan; cek console.</red>'
+  viti-help: |-
+    <yellow>/viti lihat</yellow><gray> - Lihat saldo.</gray>
+    <yellow>/viti beri nominal</yellow><gray> - Beri player di depanmu, maksimal 1,5 blok.</gray>
+    <yellow>/viti convert nominal</yellow><gray> - Tukar saldo menjadi uang fisik.</gray>
+    <yellow>/viti board</yellow><gray> - Top 10 berdasarkan rekor saldo tertinggi.</gray>
+    <yellow>/viti add|set|remove player nominal</yellow><gray> - Pengaturan saldo oleh admin.</gray>
+    <yellow>/viti reload</yellow><gray> - Muat ulang viti.yml oleh admin.</gray>
+    <gray>Nominal: 1000 atau 1.000; desimal: 1.000,50.</gray>
+  viti-balance: '<gold>Saldo Viti:</gold>'
+  viti-board: '<gold><bold>TOP 10 REKOR SALDO VITI</bold></gold>'
+  viti-invalid: '<red>Nominal tidak valid. Gunakan angka positif; set boleh 0. Contoh: 1.000,50.</red>'
+  viti-insufficient: '<red>Saldo Viti tidak cukup. Transaksi dibatalkan.</red>'
+  viti-full: '<red>Inventory penuh. Kosongkan satu slot; saldo belum dipotong.</red>'
+  viti-note-invalid: '<red>Uang fisik tidak valid atau ID-nya sudah dicairkan.</red>'
+  viti-not-ready: '<yellow>Akun belum siap. Coba lagi sebentar.</yellow>'
+  viti-busy: '<yellow>Transaksi sebelumnya sedang disimpan. Coba lagi sebentar.</yellow>'
+  viti-failed: '<red>Transaksi atau reload gagal. Ledger aktif dipertahankan; cek console.</red>'
+  viti-success: '<green>Transaksi Viti berhasil.</green>'
+  viti-converted: '<green>Saldo berhasil ditukar menjadi uang fisik.</green>'
+  viti-delivery-pending: '<yellow>Uang fisikmu sudah tercatat. Kosongkan satu slot agar uang dikirim otomatis.</yellow>'
+  viti-received: '<green>Kamu menerima</green>'
+  viti-reloaded: '<green>viti.yml berhasil dimuat ulang dan saldo disinkronkan.</green>'
+  viti-player-not-found: '<red>Player harus online dan namanya harus tepat.</red>'
+  viti-near-player: '<red>Arahkan pandangan ke player di depanmu, maksimal 1,5 blok dan tanpa penghalang.</red>'
+  profile-unavailable: '<red>Pemain sudah offline atau tidak tersedia untuk dilihat.</red>'
+  profile-action-done: '<green>Aksi profil berhasil diterapkan.</green>'
+  profile-action-failed: '<red>Aksi profil gagal. Periksa kondisi pemain dan pesan plugin terkait.</red>'
+  profile-inventory-changed: '<yellow>Item berubah sebelum klik diproses. Tampilan diperbarui; klik lagi.</yellow>'
+  profile-integration-unavailable: '<yellow>Plugin revive belum tersedia atau sedang tidak aktif.</yellow>'
+  profile-revive-requested: '<yellow>Permintaan revive dikirim. Hasilnya mengikuti pesan plugin revive.</yellow>'
+  roleplay-help: |-
+    <yellow>/me aksi</yellow><gray> - Teks aksi di atas pemain.</gray>
+    <yellow>/do kondisi</yellow><gray> - Teks kondisi di atas pemain.</gray>
+    <yellow>/ooc pesan</yellow><gray> - OOC lokal.</gray>
+    <yellow>/oocg pesan</yellow><gray> - OOC global.</gray>
+    <yellow>/carry atau /gendong</yellow><gray> - Angkat pemain di depanmu; ulangi untuk menurunkan.</gray>
+  roleplay-invalid: '<red>Teks harus berisi satu baris dan tidak melewati batas panjang di config.yml.</red>'
+  roleplay-unavailable: '<red>Perintah ini tidak tersedia saat pemain mati.</red>'
+  carry-no-target: '<red>Tidak ada pemain terlihat di depanmu dalam jarak carry, atau ada penghalang.</red>'
+  carry-unavailable: '<red>Pemain sedang berkendara, digendong, menggendong, mati, atau spectator.</red>'
+  carry-failed: '<red>Carry gagal diterapkan. Plugin lain mungkin membatalkan perpindahan.</red>'
+  carry-started: '<green>Kamu mengangkat</green>'
+  carry-riding: '<green>Kamu sedang diangkat oleh</green>'
+  carry-released: '<green>Pemain berhasil diturunkan.</green>'
+  totem-help: |-
+    <yellow>/vitae totem jumlah</yellow><gray> - Simpan batas penyerapan totem (1–1000).</gray>
+    <yellow>/vitae reset totem</yellow><gray> - Reset cooldown pemain online; jumlah tetap.</gray>
+    <gray>Klik kanan totem untuk menyerap satu charge. Cooldown dimulai setelah charge terpakai.</gray>
+  totem-invalid: '<red>Batas totem harus bilangan bulat 1 sampai 1000.</red>'
+  totem-full: '<red>Jumlah totem terserap sudah mencapai batas:</red>'
+  totem-cooldown: '<yellow>Totem belum bisa diserap. Sisa cooldown:</yellow>'
+  totem-absorbed: '<green>Totem berhasil diserap. Total:</green>'
+  totem-used: '<gold>Totem terserap menyelamatkanmu. Sisa:</gold>'
+  totem-limit-set: '<green>Batas penyerapan totem berhasil disimpan:</green>'
+  totem-reset: '<green>Reset cooldown totem untuk pemain online selesai:</green>'
+  totem-busy: '<yellow>Batas sebelumnya sedang disimpan. Coba lagi sebentar.</yellow>'
+  totem-failed: '<red>Operasi totem gagal. Cek console untuk rinciannya.</red>'
+  item-help: |-
+    <yellow>/vitae blokir item|mob nama</yellow><gray> - Toggle blokir.</gray>
+    <yellow>/vitae stuck material 1..99|off</yellow><gray> - Atur/hapus batas stack.</gray>
+  item-invalid: '<red>Nama material/mob atau batas tidak valid. Item damageable hanya boleh batas 1.</red>'
+  item-blocked: '<red>Item ini diblokir oleh aturan server.</red>'
+  item-stack-full: '<yellow>Stack belum bisa disesuaikan. Kosongkan slot inventory dahulu.</yellow>'
+  item-rules-saved: '<green>Aturan item/mob berhasil disimpan dan diterapkan.</green>'
+  item-rules-reloaded: '<green>blocked.yml berhasil dimuat ulang.</green>'
+  item-rules-busy: '<yellow>Aturan sedang diproses. Coba lagi sebentar.</yellow>'
+  item-rules-failed: '<red>Operasi aturan gagal. Aturan aktif tetap digunakan; cek console.</red>'
+  essentials-economy-blocked: '<yellow>Gunakan /viti untuk ekonomi server ini.</yellow>'

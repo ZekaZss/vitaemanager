@@ -1,0 +1,220 @@
+name: vitaemanager
+version: '2.0.0-dev.1'
+main: com.bangzachery.vitae.vitaemanager.Vitaemanager
+api-version: '1.21.4'
+authors: [Bang Zachery]
+description: Core roleplay Vitae - remake bertahap
+softdepend: [Essentials, AuraSkills, ModelEngine, Shopkeepers]
+
+commands:
+  evo:
+    description: Ritual evolusi senjata Vitae
+    usage: /evo help
+    aliases: [ritual]
+
+  vitae:
+    description: Perintah utama administrator Vitae
+    usage: /vitae help
+
+  adminpanel:
+    description: Buka panel kontrol administrator
+    usage: /adminpanel
+    aliases: [panel]
+
+  viti:
+    description: Saldo dan transaksi Viti
+    usage: /viti help
+    aliases: [uang, money]
+
+  me:
+    description: Teks aksi roleplay di atas pemain
+    usage: /me aksi
+
+  do:
+    description: Teks kondisi roleplay di atas pemain
+    usage: /do kondisi
+
+  ooc:
+    description: Obrolan luar roleplay lokal
+    usage: /ooc pesan
+
+  oocg:
+    description: Obrolan luar roleplay global
+    usage: /oocg pesan
+
+  carry:
+    description: Angkat atau turunkan pemain di depanmu
+    usage: /carry
+    aliases: [gendong]
+  vnpc:
+    description: Setup NPC dialog dan quest Vitae
+    usage: /vnpc help
+    aliases: [vitaenpc]
+  quest:
+    description: Status atau batalkan quest Vitae
+    usage: /quest status
+    aliases: [vitaequest]
+
+permissions:
+  vitae.admin:
+    description: Akses command utama administrator
+    default: op
+    children:
+      vitae.admin.npc: true
+      vitae.admin.reload: true
+      vitae.admin.maintenance: true
+      vitae.admin.chat: true
+      vitae.admin.chatbypass: true
+      vitae.admin.pvp: true
+      vitae.admin.mobspawning: true
+      vitae.admin.time: true
+      vitae.admin.weather: true
+      vitae.admin.viti: true
+      vitae.admin.profile: true
+      vitae.admin.heal: true
+      vitae.admin.feed: true
+      vitae.admin.revive: true
+      vitae.admin.gamemode: true
+      vitae.admin.teleport: true
+      vitae.admin.pull: true
+      vitae.admin.invsee: true
+      vitae.admin.totem: true
+      vitae.admin.blocker: true
+      vitae.admin.stuck: true
+      vitae.admin.whisper: true
+      vitae.admin.evolution: true
+
+  vitae.admin.reload:
+    description: Memuat ulang konfigurasi Vitae
+    default: op
+
+  vitae.admin.maintenance:
+    description: Mengatur dan melewati maintenance (kompatibel dengan izin lama)
+    default: op
+
+  vitae.admin.chat:
+    description: Mengatur chat server
+    default: op
+
+  vitae.admin.chatbypass:
+    description: Mengirim chat saat chat server dimatikan
+    default: op
+
+  vitae.admin.pvp:
+    description: Mengatur PvP per dunia
+    default: op
+
+  vitae.admin.mobspawning:
+    description: Mengatur gamerule spawn mob vanilla per dunia
+    default: op
+
+  vitae.admin.time:
+    description: Mengatur waktu dunia melalui panel
+    default: op
+
+  vitae.admin.weather:
+    description: Mengatur cuaca dunia melalui panel
+    default: op
+
+  vitae.viti:
+    description: Menggunakan saldo, transfer, dan uang fisik Viti
+    default: true
+
+  vitae.admin.viti:
+    description: Mengatur saldo Viti dan memuat ulang viti.yml
+    default: op
+
+  vitae.admin.profile:
+    description: Membuka daftar dan profil pemain
+    default: op
+
+  vitae.admin.heal:
+    description: Memulihkan HP melalui profil
+    default: op
+
+  vitae.admin.feed:
+    description: Memulihkan hunger melalui profil
+    default: op
+
+  vitae.admin.revive:
+    description: Mengirim command ke plugin revive yang tersedia
+    default: op
+
+  vitae.admin.gamemode:
+    description: Mengganti gamemode melalui profil
+    default: op
+
+  vitae.admin.teleport:
+    description: Teleport ke pemain melalui profil
+    default: op
+
+  vitae.admin.pull:
+    description: Menarik pemain melalui profil
+    default: op
+
+  vitae.admin.invsee:
+    description: Melihat dan mengedit inventory pemain online
+    default: op
+
+  vitae.roleplay:
+    description: Akses perintah teks roleplay
+    default: true
+    children:
+      vitae.roleplay.me: true
+      vitae.roleplay.do: true
+      vitae.roleplay.ooc: true
+      vitae.roleplay.oocg: true
+
+  vitae.roleplay.me:
+    default: true
+
+  vitae.roleplay.do:
+    default: true
+
+  vitae.roleplay.ooc:
+    default: true
+
+  vitae.roleplay.oocg:
+    default: true
+
+  vitae.carry:
+    description: Menggunakan carry dan gendong
+    default: true
+
+  vitae.totem:
+    description: Menyerap totem menjadi charge tersimpan
+    default: true
+
+  vitae.admin.totem:
+    description: Mengatur batas totem dan reset cooldown pemain online
+    default: op
+
+  vitae.admin.blocker:
+    description: Toggle blokir item dan mob
+    default: op
+
+  vitae.admin.stuck:
+    description: Mengatur batas stack item
+    default: op
+
+  vitae.admin.whisper:
+    description: Mengatur area bisikan, penerima, dialog, suara, preview dan reset progres
+    default: op
+
+  vitae.evolution:
+    description: Menggunakan altar evolusi yang ditujukan kepada pemain
+    default: true
+
+  vitae.admin.evolution:
+    description: Mengatur ritual evolusi senjata
+    default: op
+  vitae.admin.npc:
+    description: Mengatur NPC dialog dan quest
+    default: op
+  vitae.npc:
+    description: Memulai dialog NPC Vitae
+    default: true
+  vitae.quest:
+    description: Menerima dan membatalkan quest Vitae
+    default: true
+

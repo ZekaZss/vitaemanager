@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.bangzachery.vitae.vitaemanager.economy.VitiLedgerTest" tests="14" skipped="0" failures="0" errors="0" timestamp="2026-10-05T12:37:05.604Z" hostname="WIN-7NBI6NB9343" time="0.036">
+  <properties/>
+  <testcase name="acceptsIndonesianAmountsAndFormatsWithoutRounding()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiLedgerTest" time="0.002"/>
+  <testcase name="reloadablePendingStateCanBeAcknowledgedWithoutAnotherDebit()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiLedgerTest" time="0.011"/>
+  <testcase name="transferConservesTotalAndPreservesHistoricPeak()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiLedgerTest" time="0.002"/>
+  <testcase name="targetOverflowCannotCommitSenderDebit()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiLedgerTest" time="0.001"/>
+  <testcase name="decimalArithmeticIsExact()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiLedgerTest" time="0.0"/>
+  <testcase name="duplicatePaperCannotPayAgainEvenWhenTaggedLegacy()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiLedgerTest" time="0.0"/>
+  <testcase name="rejectsAmbiguousInvalidNegativeAndNonFiniteInputs()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiLedgerTest" time="0.002"/>
+  <testcase name="preservesSmallAndLargeFiniteLegacyDoubleAmounts()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiLedgerTest" time="0.001"/>
+  <testcase name="forgedAmountAndReusedSerialCannotChangeLedger()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiLedgerTest" time="0.002"/>
+  <testcase name="legacyPaperPaysOnceAndUnknownNewPaperNeverPays()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiLedgerTest" time="0.002"/>
+  <testcase name="withdrawalReservesValueUntilDeliveredAndRedeemed()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiLedgerTest" time="0.001"/>
+  <testcase name="adminSetZeroRetainsPeakAndRemoveDoesNotClampSilently()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiLedgerTest" time="0.002"/>
+  <testcase name="snapshotsCopyMapsAndReceiptsAndRankingBreaksTiesByUuid()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiLedgerTest" time="0.001"/>
+  <testcase name="insufficientTransferAndSelfTransferLeaveOriginalUntouched()" classname="com.bangzachery.vitae.vitaemanager.economy.VitiLedgerTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
