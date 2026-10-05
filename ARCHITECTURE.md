@@ -1,0 +1,35 @@
+# Current architecture - Modules 1-3
+
+- `Vitaemanager` owns startup/shutdown and injects services through constructors.
+- `core.config.ConfigurationService` owns strict config validation and immutable snapshots. Existing config files are never rewritten.
+- `core.message.MessageService` sends cached Adventure components. Dynamic world names are plain components, not parsed MiniMessage.
+- `servercontrol.ServerControlState` is an immutable global/world state snapshot; world IDs are UUIDs.
+- `servercontrol.ServerControlStore` validates state-version 1 and types, imports legacy maintenance_mode only on first creation, and performs forced temporary-file writes followed by atomic replacement. It never rewrites legacy config.
+- `servercontrol.ServerControlService` accepts changes on the server thread, writes through one dedicated executor, and commits the snapshot/side effects on the server thread only after successful persistence. While a write is pending, another change returns BUSY instead of overwriting pending data.
+- Shutdown stops accepting changes and waits at most 10 seconds for the writer. A committed disk write during shutdown is read on the next startup; callbacks are skipped after closing.
+- `servercontrol.ServerControlListener` handles maintenance login/join, muted chat and world loading. It never calls PlayerLoginEvent.allow(), preserving bans/whitelists/other plugin denials.
+- Chat bypass permissions are sampled on the server thread at join and once per second. Async chat reads immutable state and a UUID set; feedback is scheduled on the server thread. Runtime permission changes have up to one second of cache delay.
+- PvP uses World.setPVP. Mob spawning uses DO_MOB_SPAWNING, matching the old plugin; custom plugin spawns/spawn eggs are not universally blocked. Unconfigured worlds retain their own settings.
+- `servercontrol.gui.ServerControlPanel` owns menu layout and events. Each holder binds the viewer UUID, world UUID and page. Click/drag operations are cancelled; only ordinary top-inventory clicks act. Actions run next tick, rechecking permission, viewer and current menu.
+- Time/weather change the world's vanilla state. Maintenance/chat/PvP/mob settings are durable in server-control.yml. World rules are reapplied at startup and WorldLoadEvent.
+- `command.VitaeCommand` owns command syntax, permissions and feedback. /vitae reload reloads only config.yml, never overwriting pending or active state from another file.
+- Panel inventories close during disable. Event permission checks run on the server thread.
+- Paper supplies YAML/Adventure at runtime. Test dependencies are not bundled in the JAR.
+- There is no global plugin singleton, mutable static state, abstract module registry or added feature outside the agreed remake.
+
+## Viti economy
+
+- `economy.VitiAmount` owns strict Indonesian command parsing, exact BigDecimal arithmetic/formatting and finite nonnegative compatibility bounds. Commands accept 1000, 1.000, 1000,50 and 1.000,50; decimal dots/exponents/NaN/Infinity/negative values are rejected. Existing finite Double fractions are preserved without rounding to two decimals.
+- `economy.VitiLedger` owns immutable accounts, historical peaks, issued notes and redeemed IDs. Both sides of a transfer are computed in a new snapshot. Insufficient funds/overflow do not mutate the original. Administrative remove refuses overdrafts instead of silently clamping.
+- Leaderboard continues to use highest_balance, matching the original plugin, with UUID tie ordering and a ten-entry limit.
+- `economy.VitiStore` owns viti.yml. First migration creates viti.yml.before-remake without replacing an existing backup. Unknown root/player values and the original sample UUID-PEMAIN are preserved; that sample is not an actual ranked account. Uppercase existing UUID keys are reused rather than duplicated.
+- balance/highest_balance remain numeric compatibility mirrors. balance_exact/highest_balance_exact are authoritative decimal strings. After migration, manual edits/reload must change the exact fields; altering a numeric mirror alone does not change the authoritative amount. Old plugin versions cannot enforce note IDs/receipts.
+- New schema: vitae-data-version: 1, vitae-notes keyed by note UUID (owner, amount, pending), and vitae-redeemed with consumed UUIDs. These are required monetary state, not an admin action audit. Redeemed IDs are retained to prevent replay and must not be pruned while physical copies may exist.
+- Ledger YAML writes/reloads use one serial worker. Runtime transactions publish the new ledger only after atomic disk replacement succeeds; overlapping requests receive BUSY. Account imports/name changes are batched by a once-per-second task; offline/full pending deliveries do not trigger repeated ledger writes.
+- `economy.VitiPaper` preserves the vitaemanager:viti_balance and vitaemanager:viti_paper_amount DOUBLE keys. New paper also carries viti_paper_exact STRING, viti_paper_id STRING and viti_paper_legacy BOOLEAN. New paper is unstackable; the ledger amount is checked before redemption.
+- A new withdrawal reserves both debit and note in the ledger before delivery. A delivery is acknowledged only after invoking Paper Player.saveData for the recipient. A full/offline recipient remains pending and is retried when online with an empty slot; the plugin never drops minted paper into the world to resolve a full inventory.
+- Anonymous original paper cannot provide replay identity. First redemption seals the entire held legacy stack into one note with the stack's total value and a UUID, then invokes Player.saveData before ledger credit. On persistence failure the sealed legacy note retains its value and can be retried. Existing legacy paper PDC is trusted for migration, as in the original; this does not authenticate arbitrary NBT written by privileged tools/plugins.
+- Player.saveData is a deliberate platform save for legacy identity and note delivery, executed on the required server thread. It may block; this limited operation is chosen for consistency rather than calling player APIs asynchronously. Filesystem/native save errors and actual crash/restart behavior still require runtime verification. Ledger arithmetic/receipts do not provide a global transaction across Minecraft world/chest saves.
+- `economy.VitiListener` handles main-hand right-click redemption (including vanilla-cancelled air interaction), join/account import, pending delivery and anvil protection. Wrong PDC types and malformed note IDs are rejected.
+- `command.VitiCommand` preserves /viti, /uang, /money and lihat, beri, convert, board, add, set, remove, reload. Transfers ray trace both blocks and entities and retain the original 1.5-block proximity check. Console can use administrative commands/board/reload; admin targets must be online and match the exact name.
+- /vitae reload still owns config.yml only; /viti reload loads viti.yml on the serial worker and synchronizes online PDC mirrors after successful validation. External edits require this reload before further transactions; replacing state with an older backup can invalidate monetary history.
