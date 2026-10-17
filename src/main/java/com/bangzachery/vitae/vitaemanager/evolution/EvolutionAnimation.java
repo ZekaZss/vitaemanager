@@ -42,6 +42,9 @@ public final class EvolutionAnimation {
             case INFERNO -> elapsed * .055;
             case STORMFORGE -> Math.floor(elapsed / 6.0) * Math.PI / 3;
             case VOID -> -elapsed * .035;
+            case ASTRAL -> elapsed * .035;
+            case FROST -> elapsed * .018;
+            case PHOENIX -> elapsed * .07;
         };
 
         Vec weapon = new Vec(
@@ -58,12 +61,15 @@ public final class EvolutionAnimation {
                 case INFERNO -> Math.sin(angle * 2) * .25;
                 case STORMFORGE -> i % 2 == 0 ? .45 : -.45;
                 case VOID -> Math.sin(elapsed * .06 + i) * .8;
+                case ASTRAL -> Math.sin(angle) * 1.15;
+                case FROST -> -.65 + Math.sin(angle * 6) * .12;
+                case PHOENIX -> Math.sin(angle * 2) * .9;
             };
 
             Vec orbit = new Vec(
-                    Math.cos(angle) * 1.8 * shrink,
+                    Math.cos(angle) * (preset == Preset.FROST ? 2.2 : 1.8) * shrink,
                     weapon.y + height * shrink,
-                    Math.sin(angle) * 1.8 * shrink
+                    Math.sin(angle) * (preset == Preset.ASTRAL ? .9 : 1.8) * shrink
             );
             positions.add(origins.get(i).mix(orbit, gather));
         }

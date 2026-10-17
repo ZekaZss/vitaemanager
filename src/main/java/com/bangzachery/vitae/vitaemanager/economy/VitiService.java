@@ -4,11 +4,20 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.IllegalPluginAccessException;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.math.BigDecimal;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -26,9 +35,21 @@ public final class VitiService implements AutoCloseable {
     private volatile VitiLedger current;
     private volatile boolean closed;
     private boolean busy;
+    private final Path shopJournal;
+    private final Set<UUID> shopSpent = new HashSet<>();
+    private boolean shopFaulted;
 
-    public VitiService(JavaPlugin plugin, VitiStore store, VitiPaper paper, VitiLedger initial) {
+    public VitiService(JavaPlugin plugin, VitiStore store, VitiPaper paper, VitiLedger initial) throws IOException {
         this.plugin = plugin; this.store = store; this.paper = paper; this.current = initial;
+        shopJournal = plugin.getDataFolder().toPath().resolve("viti-shop-spent.log");
+        if (Files.exists(shopJournal)) {
+            for (String line : Files.readAllLines(shopJournal, StandardCharsets.UTF_8)) {
+                if (line.isBlank()) continue;
+                UUID id = UUID.fromString(line);
+                if (!id.toString().equals(line)) throw new IOException("Receipt toko tidak valid: " + shopJournal);
+                shopSpent.add(id);
+            }
+        }
     }
 
     public VitiLedger current() { return current; }
@@ -39,8 +60,8 @@ public final class VitiService implements AutoCloseable {
 
     // Called once per second, on the server thread. Registers/imports online accounts in one write.
     public void tick() {
-        if (busy || closed) return;
-        VitiLedger candidate = claimOnline(current);
+        if (busy || closed || shopFaulted) return;
+        VitiLedger candidate = claimOnline(current.spentInShop(shopSpent));
         boolean pendingReady = current.notes().entrySet().stream().anyMatch(entry -> {
             Player owner = Bukkit.getPlayer(entry.getValue().owner());
             return entry.getValue().pending() && owner != null
@@ -103,6 +124,48 @@ public final class VitiService implements AutoCloseable {
         });
     }
 
+    public VitiPaper.Value checkShopPaper(ItemStack item, BigDecimal denomination) {
+        if (!Bukkit.isPrimaryThread()) throw new IllegalStateException("Pembayaran toko harus di server thread");
+        if (closed || shopFaulted) throw new VitiLedger.Failure("viti-failed");
+        if (busy) throw new VitiLedger.Failure("viti-busy");
+        VitiPaper.Value value = paper.read(item);
+        BigDecimal expected = value.serial() == null
+                ? denomination.multiply(BigDecimal.valueOf(item.getAmount())) : denomination;
+        if (value.amount().compareTo(expected) != 0) throw new VitiLedger.Failure("viti-note-invalid");
+        if (value.serial() == null) return value; // Anonymous paper from the original plugin.
+        if (item.getAmount() != 1 || shopSpent.contains(value.serial())
+                || current.redeemed().contains(value.serial())) throw new VitiLedger.Failure("viti-note-invalid");
+        VitiLedger.Note note = current.notes().get(value.serial());
+        if ((note == null && !value.legacy()) || (note != null
+                && (note.pending() || note.amount().compareTo(value.amount()) != 0))) {
+            throw new VitiLedger.Failure("viti-note-invalid");
+        }
+        return value;
+    }
+
+    public void recordShopPayment(Set<UUID> ids) {
+        if (!Bukkit.isPrimaryThread()) throw new IllegalStateException("Receipt toko harus di server thread");
+        Set<UUID> fresh = new HashSet<>(ids);
+        fresh.removeAll(shopSpent);
+        if (fresh.isEmpty()) return;
+        shopSpent.addAll(fresh);
+        // The completed trade already consumed these items. Record receipts before the async
+        // ledger flush, so a restart or an overlapping money operation cannot re-use their IDs.
+        StringBuilder lines = new StringBuilder();
+        for (UUID id : fresh) lines.append(id).append('\n');
+        try (FileChannel channel = FileChannel.open(shopJournal, StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
+            ByteBuffer bytes = StandardCharsets.UTF_8.encode(lines.toString());
+            while (bytes.hasRemaining()) channel.write(bytes);
+            channel.force(true);
+        } catch (IOException error) {
+            shopFaulted = true;
+            plugin.getLogger().log(Level.SEVERE,
+                    "Pembayaran Shopkeepers telah terjadi, tetapi receipt Viti gagal disimpan. Operasi Viti dijeda.", error);
+            throw new IllegalStateException("Receipt pembayaran Viti gagal disimpan", error);
+        }
+    }
+
     public void redeem(Player player, Consumer<String> done) {
         if (!ready(done)) return;
         try {
@@ -154,14 +217,14 @@ public final class VitiService implements AutoCloseable {
 
     private boolean ready(Consumer<String> done) {
         if (!Bukkit.isPrimaryThread()) throw new IllegalStateException("Transaksi harus di server thread");
-        if (closed) { done.accept("viti-failed"); return false; }
+        if (closed || shopFaulted) { done.accept("viti-failed"); return false; }
         if (busy) { done.accept("viti-busy"); return false; }
         return true;
     }
 
     private void transact(UnaryOperator<VitiLedger> change, Runnable committed, Consumer<String> done) {
         if (!ready(done)) return;
-        try { save(change.apply(current), committed, done); }
+        try { save(change.apply(current.spentInShop(shopSpent)), committed, done); }
         catch (VitiLedger.Failure exception) { done.accept(exception.key()); }
         catch (IllegalArgumentException exception) { done.accept("viti-invalid"); }
     }

@@ -1,0 +1,29 @@
+# Config Vitaemanager; berbeda dari configs/music.yml milik ItemsAdder.
+# Audio disediakan resource pack ItemsAdder, bukan JAR plugin.
+enabled: false
+require-resource-pack: true
+volume: 1.0
+# Audio fade-in 1.5 detik/fade-out 3 detik. Loop satu lagu menunggu selesai.
+crossfade-seconds: 1.5
+admin-off-message: 'Musik sedang dimatikan admin. Mau dinyalakan? Coba chat Idan.'
+tracks:
+  chill1:
+    name: 'Chill 1'
+    sound: 'vitae_music:music.chill1'
+    duration-seconds: 106.536
+  chill2:
+    name: 'Chill 2'
+    sound: 'vitae_music:music.chill2'
+    duration-seconds: 226.872
+  intense1:
+    name: 'Intense 1'
+    sound: 'vitae_music:music.intense1'
+    duration-seconds: 170.640
+  intense2:
+    name: 'Intense 2'
+    sound: 'vitae_music:music.intense2'
+    duration-seconds: 365.760
+  intense3:
+    name: 'Intense 3'
+    sound: 'vitae_music:music.intense3'
+    duration-seconds: 161.496

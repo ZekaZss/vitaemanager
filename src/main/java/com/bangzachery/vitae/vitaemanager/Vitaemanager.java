@@ -59,10 +59,15 @@ public final class Vitaemanager extends JavaPlugin {
 
     private WhisperService whispers;
     private EvolutionService evolution;
+    private com.bangzachery.vitae.vitaemanager.story.StoryModule story;
+    private com.bangzachery.vitae.vitaemanager.selection.SelectionService selection;
+    private com.bangzachery.vitae.vitaemanager.music.MusicService music;
 
     @Override
     public void onEnable() {
         try {
+            selection = new com.bangzachery.vitae.vitaemanager.selection.SelectionService(this);
+            selection.start();
             getServer().getPluginManager().registerEvents(new com.bangzachery.vitae.vitaemanager.integration.VillagerTradeListener(), this);
             String defaults;
 
@@ -280,6 +285,18 @@ public final class Vitaemanager extends JavaPlugin {
             getServer().getPluginManager().registerEvents(evolution, this);
             evolution.start();
             com.bangzachery.vitae.vitaemanager.npc.NpcModule.start(this, viti);
+            story = new com.bangzachery.vitae.vitaemanager.story.StoryModule(this);
+            story.start();
+            executor.story(story);
+            carry.guard(story::carryBlocked);
+            music = new com.bangzachery.vitae.vitaemanager.music.MusicService(this);
+            music.start();
+            var musicExecutor = new com.bangzachery.vitae.vitaemanager.command.MusicCommand(music);
+            executor.music(musicExecutor);
+            PluginCommand musicCommand = getCommand("music");
+            if (musicCommand == null) throw new IllegalStateException("Command music tidak terdaftar di plugin.yml");
+            musicCommand.setExecutor(musicExecutor);
+            musicCommand.setTabCompleter(musicExecutor);
 
             getLogger().info(
                     "VitaeManager remake: fondasi, kontrol server, Viti, "
@@ -306,6 +323,9 @@ public final class Vitaemanager extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (music != null) music.close();
+        if (selection != null) selection.close();
+        if (story != null) story.close();
         com.bangzachery.vitae.vitaemanager.npc.NpcModule.stop(this);
         if (evolution != null) evolution.close();
         if (whispers != null) whispers.close();

@@ -2,7 +2,6 @@ package com.bangzachery.vitae.vitaemanager.whisper;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.title.Title;
 import org.bukkit.*;
 import org.bukkit.entity.Player;
 import org.bukkit.event.*;
@@ -11,7 +10,6 @@ import org.bukkit.event.player.*;
 import org.bukkit.plugin.IllegalPluginAccessException;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
-import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -26,7 +24,8 @@ public final class WhisperService implements Listener, AutoCloseable {
     private WhisperState persisted; // Used only by the one writer after construction.
     private Map<UUID, List<WhisperDefinition>> byTarget = Map.of();
     private final Map<UUID, Point[]> selections = new HashMap<>();
-    private final Map<UUID, String> playingAudio = new HashMap<>();
+    private final WhisperAudio audio = new WhisperAudio();
+    private final WhisperScreen screen = new WhisperScreen();
     public record Point(UUID world, int x, int y, int z) { }
     private BukkitTask task;
     private long tick;
@@ -53,6 +52,14 @@ public final class WhisperService implements Listener, AutoCloseable {
         if (!first && points[0] != null && !points[0].world().equals(point.world()))
             throw new IllegalArgumentException("A dan B harus dalam dunia yang sama. Mulai seleksi baru dengan pos1 di dunia ini.");
         points[first ? 0 : 1] = point;
+    }
+    public void wand(Player p, String id) {
+        current.require(id);
+        com.bangzachery.vitae.vitaemanager.selection.SelectionService.require().arm(p,"vitae.admin.whisper","Bisikan " + id,
+            com.bangzachery.vitae.vitaemanager.selection.SelectionService.Mode.WALK,(admin,a,b)->{
+                var area=com.bangzachery.vitae.vitaemanager.selection.SelectionService.area(a,b);
+                change(id,state->state.put(state.require(id).withArea(area)),text->com.bangzachery.vitae.vitaemanager.selection.SelectionService.say(admin,text));
+            });
     }
     public WhisperArea selection(Player player) {
         Point[] points = selections.get(player.getUniqueId());
@@ -84,8 +91,19 @@ public final class WhisperService implements Listener, AutoCloseable {
         });
     }
     public void preview(Player player, String id) {
-        if (closed || !playback.enqueue(player.getUniqueId(), new WhisperPlayback.Run(current.require(id), true)))
+        preview(player, id, 1);
+    }
+    public void preview(Player player, String id, int firstLine) {
+        var definition = current.require(id);
+        if (firstLine < 1 || firstLine > definition.lines().size()) throw new IllegalArgumentException("Nomor dialog tidak ada; lihat info.");
+        var selected = definition.withLines(definition.lines().subList(firstLine - 1, definition.lines().size()));
+        if (closed || !playback.enqueue(player.getUniqueId(), new WhisperPlayback.Run(selected, true)))
             throw new IllegalArgumentException("Dialog kosong, preview/area ini sudah antre, atau antrean penuh (32).");
+    }
+    public void soundTest(Player player, WhisperLine.Audio sound) {
+        validateAudio(sound);
+        if (closed || playback.head(player.getUniqueId()) != null) throw new IllegalArgumentException("Hentikan bisikan/preview dengan stop sebelum tes suara.");
+        audio.voice(player, sound);
     }
     public void stop(Player player) { clear(player); }
 
@@ -150,35 +168,29 @@ public final class WhisperService implements Listener, AutoCloseable {
         tick++;
         for (UUID id : playback.players()) {
             Player player = Bukkit.getPlayer(id);
-            if (player == null || !player.isOnline() || player.isDead()) { playback.clear(id); playingAudio.remove(id); continue; }
+            if (player == null) { playback.clear(id); audio.forget(id); screen.forget(id); continue; }
+            if (!player.isOnline() || player.isDead()) { clear(player); continue; }
             WhisperPlayback.Run run = playback.head(id);
             if (!run.preview() && (!run.definition().equals(current.definitions().get(run.definition().id()))
                     || !current.eligible(run.definition(), id) || !run.definition().area().world().equals(player.getWorld().getUID()))) {
-                if (playback.started(id)) player.clearTitle();
-                stopAudio(player);
+                screen.clear(player); audio.clear(player);
                 playback.acknowledge(id, run); continue;
             }
             WhisperPlayback.Step step = playback.advance(id, tick);
-            if (step == null) continue;
-            if (step.complete()) {
-                stopAudio(player);
+            if (step != null && step.complete()) {
+                screen.clear(player); audio.clear(player);
                 if (run.preview()) playback.acknowledge(id, run);
                 else submit(state -> state.finish(run.definition(), id), () -> playback.acknowledge(id, run), () -> {
                     playback.acknowledge(id, run);
                     if (player.isOnline()) player.sendMessage(Component.text("[Vitae] Progres bisikan belum tersimpan; hubungi admin.", NamedTextColor.RED));
                 });
             } else {
-                stopAudio(player);
+                audio.tick(player, run, tick); screen.tick(player, tick);
+                if (step == null) continue;
                 var line = step.line();
-                Title.Times times = Title.Times.times(Duration.ofMillis(250),
-                        Duration.ofMillis((line.durationTicks() - 10L) * 50), Duration.ofMillis(250));
-                player.showTitle(Title.title(Component.text(line.title(), NamedTextColor.WHITE),
-                        Component.text(line.subtitle(), NamedTextColor.GRAY), times));
-                if (line.audio() != null) {
-                    var audio = line.audio();
-                    player.playSound(player.getLocation(), audio.key(), SoundCategory.VOICE, audio.volume(), audio.pitch());
-                    playingAudio.put(id, audio.key());
-                }
+                audio.begin(player, run, tick);
+                screen.start(player, line, run.definition().visual(), tick);
+                audio.voice(player, line.audio());
             }
         }
     }
@@ -186,22 +198,19 @@ public final class WhisperService implements Listener, AutoCloseable {
         for (UUID uuid : playback.players()) {
             boolean displayed = playback.cancel(uuid, id);
             Player player = Bukkit.getPlayer(uuid);
-            if (displayed && player != null) { player.clearTitle(); stopAudio(player); }
+            if (displayed && player != null) { screen.clear(player); audio.clear(player); }
         }
     }
     private void clear(Player player) {
-        if (playback.started(player.getUniqueId())) player.clearTitle();
+        screen.clear(player);
         playback.clear(player.getUniqueId());
-        stopAudio(player);
-    }
-    private void stopAudio(Player player) {
-        String key = playingAudio.remove(player.getUniqueId());
-        if (key != null) player.stopSound(key, SoundCategory.VOICE);
+        audio.clear(player);
     }
     private void clearAll() {
-        for (UUID id : playback.players()) {
+        Set<UUID> players = new HashSet<>(playback.players()); players.addAll(audio.players()); players.addAll(screen.players());
+        for (UUID id : players) {
             Player player = Bukkit.getPlayer(id);
-            if (player != null) clear(player); else { playback.clear(id); playingAudio.remove(id); }
+            if (player != null) clear(player); else { playback.clear(id); audio.forget(id); screen.forget(id); }
         }
     }
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -218,6 +227,10 @@ public final class WhisperService implements Listener, AutoCloseable {
     @EventHandler public void respawn(PlayerRespawnEvent event) { Bukkit.getScheduler().runTask(plugin, () -> enterAt(event.getPlayer())); }
     @EventHandler public void quit(PlayerQuitEvent event) { clear(event.getPlayer()); selections.remove(event.getPlayer().getUniqueId()); }
     @EventHandler public void death(PlayerDeathEvent event) { clear(event.getEntity()); }
+    @EventHandler public void world(PlayerChangedWorldEvent event) {
+        clear(event.getPlayer());
+        Bukkit.getScheduler().runTask(plugin, () -> enterAt(event.getPlayer()));
+    }
     @Override public void close() {
         closed = true;
         if (task != null) task.cancel();

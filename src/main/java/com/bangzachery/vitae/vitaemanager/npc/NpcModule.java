@@ -17,6 +17,7 @@ public final class NpcModule {
     private static final Map<JavaPlugin, Throwable> FAILED = new IdentityHashMap<>();
     @FunctionalInterface interface Factory { NpcService create() throws IOException; }
     private NpcModule() {}
+    public static NpcService active(JavaPlugin plugin) { return ACTIVE.get(plugin); }
     public static void start(JavaPlugin plugin, VitiService viti) throws IOException {
         start(plugin, viti, () -> new NpcService(plugin, viti));
     }

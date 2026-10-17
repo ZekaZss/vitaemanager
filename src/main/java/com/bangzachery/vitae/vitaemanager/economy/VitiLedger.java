@@ -141,6 +141,18 @@ public record VitiLedger(Map<UUID, Account> accounts, Map<UUID, Note> notes,
         return new VitiLedger(accounts, copy, redeemed, giveaway);
     }
 
+    // Admin shops consume physical currency without depositing it into any player's balance.
+    public VitiLedger spentInShop(Set<UUID> ids) {
+        if (redeemed.containsAll(ids) && ids.stream().noneMatch(notes::containsKey)) return this;
+        var remaining = new HashMap<>(notes);
+        var receipts = new HashSet<>(redeemed);
+        for (UUID id : ids) {
+            remaining.remove(id);
+            receipts.add(id);
+        }
+        return new VitiLedger(accounts, remaining, receipts, giveaway);
+    }
+
     public List<Map.Entry<UUID, Account>> top() {
         return accounts.entrySet().stream().sorted((a, b) -> {
             int value = b.getValue().highest().compareTo(a.getValue().highest());

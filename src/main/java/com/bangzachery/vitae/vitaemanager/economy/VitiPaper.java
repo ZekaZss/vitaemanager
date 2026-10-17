@@ -3,6 +3,7 @@ package com.bangzachery.vitae.vitaemanager.economy;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
@@ -140,6 +141,55 @@ public final class VitiPaper {
         } catch (IllegalArgumentException exception) {
             return null;
         }
+    }
+
+    public BigDecimal denomination(ItemStack item) {
+        if (!isPaper(item) || item.getAmount() < 1) throw new VitiLedger.Failure("viti-note-invalid");
+        var data = item.getItemMeta().getPersistentDataContainer();
+        if (!data.has(amount, PersistentDataType.DOUBLE)
+                || (data.has(exact) && !data.has(exact, PersistentDataType.STRING))) {
+            throw new VitiLedger.Failure("viti-note-invalid");
+        }
+        String precise = data.get(exact, PersistentDataType.STRING);
+        return VitiAmount.positive(VitiAmount.stored(precise == null
+                ? data.get(amount, PersistentDataType.DOUBLE) : precise));
+    }
+
+    // A price is a denomination, not a redeemable banknote. The player's note keeps its serial.
+    public ItemStack shopCost(ItemStack sample) {
+        if (!isShopCost(sample)) return sample;
+        ItemStack cost = create(new UUID(0, 0), shopDenomination(sample), false);
+        cost.setAmount(sample.getAmount());
+        var meta = cost.getItemMeta();
+        // Trading compares custom_data as a component. Removing only the serial is insufficient.
+        // The price contains presentation components only; the trade event verifies the real note.
+        for (NamespacedKey key : meta.getPersistentDataContainer().getKeys()) {
+            meta.getPersistentDataContainer().remove(key);
+        }
+        cost.setItemMeta(meta);
+        return cost;
+    }
+
+    public boolean isShopCost(ItemStack item) {
+        if (isPaper(item)) return true;
+        if (item == null || item.getType() != Material.PAPER || !item.hasItemMeta()) return false;
+        var meta = item.getItemMeta();
+        var lore = meta.lore();
+        Component name = meta.displayName();
+        return name != null && lore != null && lore.size() == 2
+                && PlainTextComponentSerializer.plainText().serialize(name).equals("Uang Viti Fisik")
+                && PlainTextComponentSerializer.plainText().serialize(lore.get(0))
+                .matches("Nominal: [0-9][0-9.,]* Viti")
+                && PlainTextComponentSerializer.plainText().serialize(lore.get(1))
+                .equals("Klik kanan di tangan utama untuk mencairkan.");
+    }
+
+    public BigDecimal shopDenomination(ItemStack item) {
+        if (isPaper(item)) return denomination(item);
+        if (!isShopCost(item)) throw new VitiLedger.Failure("viti-note-invalid");
+        String line = PlainTextComponentSerializer.plainText().serialize(item.getItemMeta().lore().get(0));
+        String value = line.substring("Nominal: ".length(), line.length() - " Viti".length());
+        return VitiAmount.positive(VitiAmount.stored(value.replace(".", "").replace(',', '.')));
     }
 
     public ItemStack create(

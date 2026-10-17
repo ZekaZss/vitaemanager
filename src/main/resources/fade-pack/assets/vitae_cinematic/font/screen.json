@@ -1,0 +1,13 @@
+{
+  "providers": [
+    {
+      "type": "bitmap",
+      "file": "vitae_cinematic:font/black_screen.png",
+      "height": 8192,
+      "ascent": 4096,
+      "chars": [
+        "\ue001"
+      ]
+    }
+  ]
+}

@@ -75,7 +75,19 @@ public final class WhisperStore {
                 lines.add(new WhisperLine(string(line, "title"), string(line, "subtitle"),
                         integer(line, "duration-ticks"), integer(line, "gap-ticks"), audio));
             }
-            definitions.put(id, new WhisperDefinition(id, area, targets, lines, integer(entry, "plays"), enabled));
+            WhisperMusic music = null;
+            if (entry.isSet("music")) {
+                var sound = section(entry, "music");
+                var audio = new WhisperLine.Audio(string(sound, "key"), decimal(sound, "volume"), decimal(sound, "pitch"));
+                validateAudio(audio); music = new WhisperMusic(audio, integer(sound, "repeat-ticks"));
+            }
+            WhisperVisual visual = WhisperVisual.defaults();
+            if (entry.isSet("visual")) {
+                var settings = section(entry, "visual");
+                if (!(settings.get("typing") instanceof Boolean typing)) throw invalid(id + ".visual.typing harus boolean");
+                visual = new WhisperVisual(typing, integer(settings, "characters-per-tick"), integer(settings, "fade-in-ticks"), integer(settings, "fade-out-ticks"));
+            }
+            definitions.put(id, new WhisperDefinition(id, area, targets, lines, integer(entry, "plays"), enabled, music, visual));
             var counts = section(entry, "completed");
             Map<UUID, Integer> completed = new HashMap<>();
             for (String player : counts.getKeys(false)) {
@@ -96,6 +108,15 @@ public final class WhisperStore {
             var definition = state.require(id);
             var entry = entries.createSection(id);
             entry.set("enabled", definition.enabled()); entry.set("plays", definition.limit());
+            if (definition.music() != null) {
+                validateAudio(definition.music().sound());
+                var sound = entry.createSection("music"); var audio = definition.music().sound();
+                sound.set("key", audio.key()); sound.set("volume", audio.volume()); sound.set("pitch", audio.pitch());
+                sound.set("repeat-ticks", definition.music().repeatTicks());
+            }
+            var visual = entry.createSection("visual");
+            visual.set("typing", definition.visual().typing()); visual.set("characters-per-tick", definition.visual().charactersPerTick());
+            visual.set("fade-in-ticks", definition.visual().fadeInTicks()); visual.set("fade-out-ticks", definition.visual().fadeOutTicks());
             if (definition.area() != null) {
                 var area = definition.area(); var region = entry.createSection("area");
                 region.set("world", area.world().toString());

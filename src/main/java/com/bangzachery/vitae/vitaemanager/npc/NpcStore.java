@@ -4,7 +4,6 @@ import com.google.gson.*;
 import com.google.gson.stream.JsonReader;
 import java.io.*;
 import java.lang.reflect.*;
-import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -17,30 +16,44 @@ public final class NpcStore {
     public NpcStore(Path file) { this.file = file; }
     public NpcData.State initialize() throws IOException {
         if (!Files.exists(file)) { var state = NpcData.State.empty(); save(state); return state; }
-        if (Files.size(file) > 16_000_000) throw new IOException("npc.json melebihi 16 MB.");
+        JsonElement json;
+        NpcData.State state;
         try (var reader = new JsonReader(Files.newBufferedReader(file, StandardCharsets.UTF_8))) {
             reader.setStrictness(Strictness.STRICT);
-            JsonElement json = JsonParser.parseReader(reader);
+            json = JsonParser.parseReader(reader);
             if (reader.peek() != com.google.gson.stream.JsonToken.END_DOCUMENT) throw new IllegalArgumentException("Data tambahan setelah JSON.");
             validate(json, NpcData.State.class);
-            return Objects.requireNonNull(JSON.fromJson(json, NpcData.State.class));
+            state = Objects.requireNonNull(JSON.fromJson(json, NpcData.State.class));
         } catch (RuntimeException e) { throw new IOException("npc.json tidak valid. File lama dipertahankan.", e); }
+        if (needsUpgrade(json)) {
+            Path backup = file.resolveSibling("npc-before-story-update-" + UUID.randomUUID() + ".json.bak");
+            Files.copy(file, backup); // Close the reader before replacing a file on Windows.
+            save(state);
+        }
+        return state;
     }
     public void save(NpcData.State state) throws IOException {
-        byte[] bytes = JSON.toJson(state).getBytes(StandardCharsets.UTF_8);
-        if (bytes.length > 16_000_000) throw new IOException("Data NPC melebihi 16 MB.");
         Path parent = file.toAbsolutePath().getParent(); Files.createDirectories(parent);
         Path temp = Files.createTempFile(parent, "npc-", ".tmp");
         try {
-            try (FileChannel channel = FileChannel.open(temp, StandardOpenOption.WRITE)) {
-                ByteBuffer buffer = ByteBuffer.wrap(bytes); while (buffer.hasRemaining()) channel.write(buffer); channel.force(true);
-            }
+            try (Writer writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8)) { JSON.toJson(state, writer); }
+            try (FileChannel channel = FileChannel.open(temp, StandardOpenOption.WRITE)) { channel.force(true); }
             Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } finally { Files.deleteIfExists(temp); }
     }
+    private static boolean needsUpgrade(JsonElement value) {
+        if (value.isJsonArray()) { for (JsonElement child : value.getAsJsonArray()) if (needsUpgrade(child)) return true; }
+        if (value.isJsonObject()) {
+            JsonObject object = value.getAsJsonObject();
+            if (object.has("npcs") && !object.has("memories") || object.has("token") && (!object.has("appearance") || !object.has("memory"))
+                    || object.has("blocks") && !object.has("timing") || object.has("label") && !object.has("memoryKey")) return true;
+            for (var entry : object.entrySet()) if (needsUpgrade(entry.getValue())) return true;
+        }
+        return false;
+    }
     private static void validate(JsonElement value, Type type) {
         if (value == null || value.isJsonNull()) {
-            if (type == NpcData.Point.class || type == com.bangzachery.vitae.vitaemanager.whisper.WhisperArea.class) return;
+            if (type == NpcData.Point.class || type == NpcData.Gate.class || type == com.bangzachery.vitae.vitaemanager.whisper.WhisperArea.class) return;
             throw new IllegalArgumentException("Nilai wajib tidak boleh kosong: " + type);
         }
         if (type instanceof ParameterizedType p) {
@@ -62,7 +75,10 @@ public final class NpcStore {
             if (!value.isJsonObject()) throw new IllegalArgumentException("Record harus berupa object.");
             for (RecordComponent field : c.getRecordComponents()) {
                 // Older npc.json versions have no orientation offset; their default is zero.
-                if (c == NpcData.Definition.class && field.getName().equals("facing") && !value.getAsJsonObject().has("facing")) continue;
+                if (c == NpcData.Definition.class && Set.of("facing", "gate", "appearance", "memory").contains(field.getName()) && !value.getAsJsonObject().has(field.getName())) continue;
+                if (c == NpcData.State.class && field.getName().equals("memories") && !value.getAsJsonObject().has(field.getName())) continue;
+                if (c == NpcData.Gate.class && field.getName().equals("timing") && !value.getAsJsonObject().has(field.getName())) continue;
+                if (c == NpcData.Choice.class && Set.of("memoryKey", "memoryValue").contains(field.getName()) && !value.getAsJsonObject().has(field.getName())) continue;
                 validate(value.getAsJsonObject().get(field.getName()), field.getGenericType());
             }
         } else if (c == boolean.class) {

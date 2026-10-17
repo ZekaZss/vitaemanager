@@ -1,0 +1,17 @@
+﻿
+# Cache dan hasil build
+/.gradle/
+/build/
+/.idea/
+/out/
+*.iml
+*.log
+
+# Backup installer lokal
+/*-backup-*/
+
+# Data server lokal
+/run/
+/server/
+.env
+.env.*

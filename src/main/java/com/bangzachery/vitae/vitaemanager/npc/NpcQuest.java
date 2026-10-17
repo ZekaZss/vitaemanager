@@ -24,6 +24,9 @@ public final class NpcQuest implements Listener, AutoCloseable {
         public final long deadline = System.currentTimeMillis() + 1_800_000;
         public final BossBar bar = BossBar.bossBar(Component.text("Quest • 30:00"), 1, BossBar.Color.GREEN, BossBar.Overlay.PROGRESS);
         public final Set<String> remaining = new HashSet<>();
+        final Map<String, NpcData.Crop> crops = new HashMap<>();
+        boolean preparing;
+        NpcFarm.Handle work;
         public int count;
         public long nextWave;
         public Mob mob;
@@ -36,6 +39,15 @@ public final class NpcQuest implements Listener, AutoCloseable {
     private final BiPredicate<Player, Location> teleport;
     private final NamespacedKey key;
     private final Map<UUID, Run> runs = new HashMap<>();
+    private final NpcFarm farms = new NpcFarm();
+    private static final class Repair {
+        final NpcData.Definition npc;
+        NpcFarm.Handle work;
+        long retryAt;
+        boolean warned;
+        Repair(NpcData.Definition npc) { this.npc = npc; }
+    }
+    private final Map<UUID, Repair> repairs = new LinkedHashMap<>();
     private long ticks;
     public NpcQuest(JavaPlugin plugin, Supplier<Collection<NpcData.Definition>> definitions,
                     Consumer<Run> completed, BiPredicate<Player, Location> teleport) {
@@ -43,7 +55,31 @@ public final class NpcQuest implements Listener, AutoCloseable {
         key = new NamespacedKey(plugin, "npc_quest_mob");
     }
     public Run run(UUID player) { return runs.get(player); }
-    public boolean uses(String npc) { return runs.values().stream().anyMatch(r -> r.npc.id().equals(npc)); }
+    public boolean uses(String npc) {
+        return runs.values().stream().anyMatch(r -> r.npc.id().equals(npc))
+                || repairs.values().stream().anyMatch(r -> r.npc.id().equals(npc));
+    }
+    public boolean farmBusy(WhisperArea area) {
+        return farms.busy(area) || repairs.values().stream().anyMatch(r -> NpcData.overlaps(r.npc.quest().area(), area))
+                || runs.values().stream().anyMatch(r -> NpcData.overlaps(r.npc.quest().area(), area));
+    }
+    NpcFarm.Handle scan(WhisperArea area, BooleanSupplier active, BiConsumer<Long, Long> progress,
+                        Consumer<List<NpcData.Crop>> success, Consumer<String> failure) {
+        return farms.scan(area, active, progress, success, failure);
+    }
+    /** Keep an idle field reserved until its complete snapshot has been restored. */
+    public void restore(NpcData.Definition npc) {
+        if (npc.quest().kind() != NpcData.QuestKind.FARM || repairs.containsKey(npc.token())) return;
+        if (runs.values().stream().anyMatch(r -> NpcData.overlaps(r.npc.quest().area(), npc.quest().area()))) return;
+        Repair repair = new Repair(npc); repairs.put(npc.token(), repair); repair(repair);
+    }
+    private void repair(Repair repair) {
+        repair.work = farms.restore(repair.npc.quest(), () -> repairs.get(repair.npc.token()) == repair,
+                crop -> {}, () -> repairs.remove(repair.npc.token()), reason -> {
+                    repair.work = null; repair.retryAt = ticks + 200;
+                    if (!repair.warned) { repair.warned = true; plugin.getLogger().warning("Ladang " + repair.npc.id() + " belum pulih: " + reason); }
+                });
+    }
     public boolean tool(Player p, NpcData.Quest q) {
         Material type = q.kind() == NpcData.QuestKind.FARM ? Material.IRON_HOE : Material.IRON_SWORD;
         for (ItemStack item : p.getInventory().getStorageContents()) if (item != null && item.getType() == type) return true;
@@ -54,6 +90,7 @@ public final class NpcQuest implements Listener, AutoCloseable {
                 ? "Kamu perlu iron hoe di inventory untuk meladang." : "Bawalah iron sword untuk mengerjakan quest ini.";
         if (runs.values().stream().anyMatch(r -> NpcData.overlaps(r.npc.quest().area(), npc.quest().area())))
             return "Tempat quest sedang dipakai. Tunggu pemain sebelumnya selesai, ya.";
+        if (farmBusy(npc.quest().area())) return "Ladang sedang disiapkan atau dipulihkan. Coba kembali sebentar lagi.";
         return null;
     }
     public boolean start(Player p, NpcData.Definition npc) {
@@ -67,7 +104,8 @@ public final class NpcQuest implements Listener, AutoCloseable {
     private static String objective(NpcData.Quest q) {
         if (q.kind() == NpcData.QuestKind.MOB) return "kalahkan " + q.mob().toLowerCase(Locale.ROOT);
         Set<String> names = new LinkedHashSet<>();
-        for (var crop : q.crops()) names.add(switch (Bukkit.createBlockData(crop.plant()).getMaterial()) {
+        Set<String> plants = new LinkedHashSet<>(); for (var crop : q.crops()) plants.add(crop.plant());
+        for (String plant : plants) names.add(switch (Bukkit.createBlockData(plant).getMaterial()) {
             case CARROTS -> "wortel"; case POTATOES -> "kentang"; case WHEAT -> "gandum"; case BEETROOTS -> "bit";
             default -> "tanaman";
         });
@@ -76,8 +114,19 @@ public final class NpcQuest implements Listener, AutoCloseable {
     private void wave(Run run) {
         run.nextWave = 0;
         if (run.npc.quest().kind() == NpcData.QuestKind.FARM) {
-            restore(run.npc.quest()); run.remaining.clear();
-            for (var crop : run.npc.quest().crops()) run.remaining.add(crop.key());
+            run.preparing = true; run.remaining.clear(); run.crops.clear();
+            Player player = Bukkit.getPlayer(run.player);
+            if (player != null) tell(player, run.npc, "Menyiapkan " + run.npc.quest().crops().size() + " tanaman untuk putaran " + (run.count + 1) + ". Tunggu sampai ladang siap.");
+            run.work = farms.restore(run.npc.quest(), () -> runs.get(run.player) == run,
+                    crop -> { run.remaining.add(crop.key()); run.crops.put(crop.key(), crop); }, () -> {
+                        if (runs.get(run.player) != run) return;
+                        run.work = null; run.preparing = false;
+                        Player p = Bukkit.getPlayer(run.player);
+                        if (p != null) tell(p, run.npc, "Ladang siap. Panen seluruh " + run.remaining.size() + " tanaman!");
+                    }, reason -> {
+                        plugin.getLogger().warning("Putaran ladang " + run.npc.id() + " gagal: " + reason);
+                        cancel(run.player, "Ladang belum bisa disiapkan. Hubungi admin; quest dibatalkan.", true);
+                    });
         } else spawn(run);
     }
     private void spawn(Run run) {
@@ -133,7 +182,7 @@ public final class NpcQuest implements Listener, AutoCloseable {
             if (!tool(p, run.npc.quest())) { cancel(run.player, "Alat wajib tidak ada lagi di inventory.", true); continue; }
             if (ticks % 20 == 0) {
                 long seconds = (left + 999) / 1000;
-                run.bar.name(Component.text("Quest " + run.npc.name() + " • " + String.format("%02d:%02d", seconds / 60, seconds % 60)));
+                run.bar.name(Component.text("Quest " + NpcText.plain(run.npc.name()) + " • " + String.format("%02d:%02d", seconds / 60, seconds % 60)));
                 run.bar.progress(Math.max(0, Math.min(1, left / 1_800_000f)));
             }
             if (run.nextWave > 0 && ticks >= run.nextWave) {
@@ -141,6 +190,8 @@ public final class NpcQuest implements Listener, AutoCloseable {
             }
             if (run.mob != null && run.mob.isValid() && !NpcData.inside(run.npc.quest().area(), NpcRenderer.point(run.mob.getLocation()))) run.mob.teleport(run.spawn);
         }
+        for (Repair repair : List.copyOf(repairs.values())) if (repair.work == null && ticks >= repair.retryAt) repair(repair);
+        farms.tick();
     }
     public void finish(Run run) { cleanup(run); }
     public void cancel(UUID player, String reason, boolean back) {
@@ -151,38 +202,15 @@ public final class NpcQuest implements Listener, AutoCloseable {
         }
     }
     private void cleanup(Run run) {
-        runs.remove(run.player); if (run.mob != null) run.mob.remove();
+        runs.remove(run.player); if (run.work != null) run.work.cancel(); if (run.mob != null) run.mob.remove();
         Player p = Bukkit.getPlayer(run.player); if (p != null) p.hideBossBar(run.bar);
-        if (run.npc.quest().kind() == NpcData.QuestKind.FARM) restore(run.npc.quest());
-    }
-    public static void restore(NpcData.Quest quest) {
-        if (quest.kind() != NpcData.QuestKind.FARM) return;
-        World world = Bukkit.getWorld(quest.area().world()); if (world == null) return;
-        for (var crop : quest.crops()) {
-            world.getBlockAt(crop.x(), crop.y() - 1, crop.z()).setBlockData(Bukkit.createBlockData(crop.soil()), false);
-            world.getBlockAt(crop.x(), crop.y(), crop.z()).setBlockData(Bukkit.createBlockData(crop.plant()), false);
-        }
-    }
-    public static List<NpcData.Crop> scan(WhisperArea area) {
-        long volume = (long) (area.maxX() - area.minX() + 1) * (area.maxY() - area.minY() + 1) * (area.maxZ() - area.minZ() + 1);
-        if (volume > 8192) throw new IllegalArgumentException("Seleksi ladang maksimum 8192 blok.");
-        World world = Objects.requireNonNull(Bukkit.getWorld(area.world()), "Dunia belum dimuat.");
-        var crops = new ArrayList<NpcData.Crop>();
-        for (int x = area.minX(); x <= area.maxX(); x++) for (int y = area.minY(); y <= area.maxY(); y++) for (int z = area.minZ(); z <= area.maxZ(); z++) {
-            Block b = world.getBlockAt(x, y, z);
-            if (Set.of(Material.CARROTS, Material.POTATOES, Material.WHEAT, Material.BEETROOTS).contains(b.getType())) {
-                Block soil = b.getRelative(BlockFace.DOWN); if (soil.getType() != Material.FARMLAND) throw new IllegalArgumentException("Tanaman harus berada di atas farmland.");
-                Ageable plant = (Ageable) b.getBlockData(); plant.setAge(plant.getMaximumAge());
-                crops.add(new NpcData.Crop(x, y, z, plant.getAsString(), soil.getBlockData().getAsString()));
-            }
-        }
-        if (crops.isEmpty() || crops.size() > 512) throw new IllegalArgumentException("Siapkan 1–512 wortel/kentang/gandum/bit dalam seleksi.");
-        return List.copyOf(crops);
+        restore(run.npc);
     }
     private boolean protectedAt(Block block) {
         NpcData.Point p = NpcRenderer.point(block.getLocation());
         return definitions.get().stream().anyMatch(d -> d.enabled() && d.quest().kind() == NpcData.QuestKind.FARM && NpcData.inside(d.quest().area(), p))
-                || runs.values().stream().anyMatch(r -> r.npc.quest().kind() == NpcData.QuestKind.FARM && NpcData.inside(r.npc.quest().area(), p));
+                || runs.values().stream().anyMatch(r -> r.npc.quest().kind() == NpcData.QuestKind.FARM && NpcData.inside(r.npc.quest().area(), p))
+                || repairs.values().stream().anyMatch(r -> NpcData.inside(r.npc.quest().area(), p)) || farms.contains(p);
     }
     private Run owner(Entity entity) {
         String id = entity.getPersistentDataContainer().get(key, PersistentDataType.STRING);
@@ -191,9 +219,9 @@ public final class NpcQuest implements Listener, AutoCloseable {
     }
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true) public void harvest(BlockBreakEvent e) {
         if (!protectedAt(e.getBlock())) return; e.setCancelled(true); e.setDropItems(false); e.setExpToDrop(0);
-        Run r = runs.get(e.getPlayer().getUniqueId()); if (r == null || r.npc.quest().kind() != NpcData.QuestKind.FARM || r.nextWave > 0) return;
+        Run r = runs.get(e.getPlayer().getUniqueId()); if (r == null || r.npc.quest().kind() != NpcData.QuestKind.FARM || r.nextWave > 0 || r.preparing) return;
         Block b = e.getBlock(); String position = b.getX() + ":" + b.getY() + ":" + b.getZ();
-        NpcData.Crop crop = r.npc.quest().crops().stream().filter(c -> c.key().equals(position)).findFirst().orElse(null);
+        NpcData.Crop crop = r.crops.get(position);
         if (!r.remaining.contains(position) || crop == null || b.getType() != Bukkit.createBlockData(crop.plant()).getMaterial()
                 || !(b.getBlockData() instanceof Ageable age) || age.getAge() != age.getMaximumAge() || !tool(e.getPlayer(), r.npc.quest())) return;
         b.setType(Material.AIR, false); r.remaining.remove(position); if (r.remaining.isEmpty()) advance(r);
@@ -234,6 +262,9 @@ public final class NpcQuest implements Listener, AutoCloseable {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true) public void retract(BlockPistonRetractEvent e) { if (e.getBlocks().stream().anyMatch(b -> protectedAt(b) || protectedAt(b.getRelative(e.getDirection())))) e.setCancelled(true); }
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true) public void explosion(EntityExplodeEvent e) { if (owner(e.getEntity()) != null) e.setCancelled(true); else e.blockList().removeIf(this::protectedAt); }
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true) public void explosion(BlockExplodeEvent e) { e.blockList().removeIf(this::protectedAt); }
-    private static void tell(Player p, NpcData.Definition d, String message) { p.sendMessage(Component.text(d.name() + ": " + message)); }
-    @Override public void close() { for (UUID player : List.copyOf(runs.keySet())) cancel(player, "", false); HandlerList.unregisterAll(this); }
+    private static void tell(Player p, NpcData.Definition d, String message) { p.sendMessage(NpcText.name(d.name()).append(Component.text(": " + message))); }
+    @Override public void close() {
+        for (UUID player : List.copyOf(runs.keySet())) cancel(player, "", false);
+        farms.close(); repairs.clear(); HandlerList.unregisterAll(this);
+    }
 }

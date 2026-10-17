@@ -35,6 +35,10 @@ public final class VitaeCommand implements CommandExecutor, TabCompleter {
     private final TotemService totems;
     private final ItemRulesService itemRules;
     private final WhisperCommand whispers;
+    private com.bangzachery.vitae.vitaemanager.story.StoryModule story;
+    public void story(com.bangzachery.vitae.vitaemanager.story.StoryModule story) { this.story = story; }
+    private MusicCommand music;
+    public void music(MusicCommand music) { this.music = music; }
 
     public VitaeCommand(ConfigurationService configuration, MessageService messages, Logger logger,
                         ServerControlService controls, ServerControlPanel panel, TotemService totems,
@@ -63,11 +67,31 @@ public final class VitaeCommand implements CommandExecutor, TabCompleter {
             messages.send(sender, "server-help");
             messages.send(sender, "totem-help");
             messages.send(sender, "item-help");
+            sender.sendMessage(Component.text("Dungeon: /vdungeon help • Fade: /vitae fade help • Alat seleksi: /vitae seleksi help", NamedTextColor.AQUA));
+            if (sender.hasPermission("vitae.admin.music")) sender.sendMessage(Component.text("Musik pribadi: /vitae music help • Pemain: /music help", NamedTextColor.AQUA));
             if (sender.hasPermission("vitae.admin.whisper")) sender.sendMessage(messages.component("prefix")
                     .append(Component.text("Bisikan Area: /vitae bisikan help", NamedTextColor.AQUA)));
             return true;
         }
         String action = args[0].toLowerCase(Locale.ROOT);
+        if (action.equals("music")) {
+            if (music == null) { sender.sendMessage(Component.text("Modul musik belum aktif.", NamedTextColor.RED)); return true; }
+            return music.admin(sender, java.util.Arrays.copyOfRange(args, 1, args.length));
+        }
+        if (action.equals("seleksi")) {
+            if (!(sender instanceof Player p)) { sender.sendMessage(Component.text("Seleksi digunakan dari dalam game.")); return true; }
+            try {
+                var tool = com.bangzachery.vitae.vitaemanager.selection.SelectionService.require();
+                if (args.length == 2 && args[1].equalsIgnoreCase("cancel")) { tool.cancel(p); tool.scanner().cancelOwner(p.getUniqueId()); tool.say(p,"Seleksi/pemindaian milikmu dibatalkan."); }
+                else if (args.length == 2 && args[1].equalsIgnoreCase("status")) tool.status(p);
+                else p.sendMessage(Component.text("/vitae seleksi cancel|status • /vdungeon <id> wand <area> • /vnpc <id> wand quest|trigger|gate • /vitae bisikan wand <id>",NamedTextColor.AQUA));
+            } catch (RuntimeException e) { p.sendMessage(Component.text(e.getMessage(),NamedTextColor.RED)); }
+            return true;
+        }
+        if (action.equals("fade") || action.equals("dungeon")) {
+            if (story == null) { sender.sendMessage(Component.text("Modul story belum aktif.", NamedTextColor.RED)); return true; }
+            return story.execute(sender, action, java.util.Arrays.copyOfRange(args, 1, args.length));
+        }
         if (action.equals("bisikan")) return whispers.execute(sender, java.util.Arrays.copyOfRange(args, 1, args.length));
         if (action.equals("blokir") || action.equals("stuck")) {
             if (!allowed(sender, action.equals("blokir") ? "blocker" : "stuck")) return true;
@@ -199,11 +223,18 @@ public final class VitaeCommand implements CommandExecutor, TabCompleter {
     public @NotNull List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                                @NotNull String alias, @NotNull String[] args) {
         if (!sender.hasPermission("vitae.admin") || command.getName().equalsIgnoreCase("adminpanel")) return List.of();
+        if (args.length > 1 && music != null && args[0].equalsIgnoreCase("music"))
+            return music.completeAdmin(sender, java.util.Arrays.copyOfRange(args, 1, args.length));
+        if (args.length > 1 && story != null && List.of("fade", "dungeon").contains(args[0].toLowerCase(Locale.ROOT)))
+            return story.complete(sender, args[0].toLowerCase(Locale.ROOT), java.util.Arrays.copyOfRange(args, 1, args.length));
         if (args.length > 1 && args[0].equalsIgnoreCase("bisikan"))
             return whispers.complete(sender, java.util.Arrays.copyOfRange(args, 1, args.length));
         List<String> choices = new ArrayList<>();
         if (args.length == 1) {
-            choices.addAll(List.of("help", "panel"));
+            choices.addAll(List.of("help", "panel", "seleksi"));
+            if (sender.hasPermission("vitae.admin.music")) choices.add("music");
+            if (sender.hasPermission("vitae.admin.fade")) choices.add("fade");
+            if (sender.hasPermission("vitae.admin.dungeon")) choices.add("dungeon");
             if (sender.hasPermission("vitae.admin.whisper")) choices.add("bisikan");
             if (sender.hasPermission("vitae.admin.blocker")) choices.add("blokir");
             if (sender.hasPermission("vitae.admin.stuck")) choices.add("stuck");
@@ -213,6 +244,7 @@ public final class VitaeCommand implements CommandExecutor, TabCompleter {
             }
         } else if (args.length == 2 || args.length == 3) {
             String action = args[0].toLowerCase(Locale.ROOT);
+            if (args.length==2&&action.equals("seleksi")) choices.addAll(List.of("help","cancel","status"));
             if (args.length == 2 && sender.hasPermission("vitae.admin.totem")) {
                 if (action.equals("reset")) return "totem".startsWith(args[1].toLowerCase(Locale.ROOT)) ? List.of("totem") : List.of();
                 if (action.equals("totem")) return List.of("1", "2", "3", "5", "10").stream()

@@ -7,23 +7,33 @@ import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Display;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.entity.EntityMountEvent;
+import org.bukkit.event.entity.EntityDismountEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.Transformation;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.logging.Level;
 
 public final class RoleplayService implements Listener, AutoCloseable {
     private final JavaPlugin plugin;
@@ -33,6 +43,12 @@ public final class RoleplayService implements Listener, AutoCloseable {
     private BukkitTask task;
     private long ticks;
     private boolean closed;
+    private Constructor<?> friendlyBuffer;
+    private Method writeInt, writeInts, decodePacket, getHandle, sendPacket;
+    private Method createBuffer, releaseBuffer;
+    private Field connection;
+    private Object passengerCodec;
+    private boolean packetWarning;
 
     public RoleplayService(JavaPlugin plugin, ConfigurationService configuration) {
         this.plugin = plugin;
@@ -41,7 +57,25 @@ public final class RoleplayService implements Listener, AutoCloseable {
     }
 
     public void start() {
-        task = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 5L, 5L);
+        try {
+            Class<?> friendly = Class.forName("net.minecraft.network.FriendlyByteBuf");
+            Class<?> byteBuf = Class.forName("io.netty.buffer.ByteBuf");
+            createBuffer = Class.forName("io.netty.buffer.Unpooled").getMethod("buffer");
+            releaseBuffer = byteBuf.getMethod("release");
+            friendlyBuffer = friendly.getConstructor(byteBuf);
+            writeInt = friendly.getMethod("writeVarInt", int.class);
+            writeInts = friendly.getMethod("writeVarIntArray", int[].class);
+            decodePacket = Class.forName("net.minecraft.network.codec.StreamDecoder").getMethod("decode", Object.class);
+            passengerCodec = Class.forName("net.minecraft.network.protocol.game.ClientboundSetPassengersPacket")
+                    .getField("STREAM_CODEC").get(null);
+            connection = Class.forName("net.minecraft.server.level.ServerPlayer").getField("connection");
+            sendPacket = Class.forName("net.minecraft.server.network.ServerGamePacketListenerImpl")
+                    .getMethod("send", Class.forName("net.minecraft.network.protocol.Packet"));
+        } catch (ReflectiveOperationException | LinkageError error) {
+            passengerCodec = null;
+            packetFailure(error);
+        }
+        task = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1L, 1L);
     }
 
     public void show(Player owner, Component text) {
@@ -58,12 +92,15 @@ public final class RoleplayService implements Listener, AutoCloseable {
             entity.setPersistent(false);
             entity.setVisibleByDefault(false);
             entity.setLineWidth(240);
-            entity.setTeleportDuration(5);
+            entity.setTeleportDuration(0);
+            entity.setInterpolationDuration(0);
+            entity.setTransformation(new Transformation(new Vector3f(0, passengerCodec == null ? 0 : .95f, 0),
+                    new Quaternionf(), new Vector3f(1, 1, 1), new Quaternionf()));
         });
         TextSession session = new TextSession(display,
                 ticks + configuration.current().roleplay().durationTicks());
         texts.put(owner.getUniqueId(), session);
-        visibility(owner, session);
+        visibility(owner, session, true);
     }
 
     public boolean visible(Player viewer, Player owner) {
@@ -79,7 +116,7 @@ public final class RoleplayService implements Listener, AutoCloseable {
     }
 
     private void tick() {
-        ticks += 5;
+        ticks++;
         for (UUID id : Set.copyOf(texts.keySet())) {
             TextSession session = texts.get(id);
             Player owner = Bukkit.getPlayer(id);
@@ -88,30 +125,85 @@ public final class RoleplayService implements Listener, AutoCloseable {
                 remove(id);
                 continue;
             }
+            // The server position keeps tracking/chunks current. Clients anchor the text to the
+            // rendered player, without making the player a real vehicle that blocks teleporting.
             Location destination = position(owner);
-            if (session.display.getLocation().distanceSquared(destination) > 0.0001) {
+            if (session.display.getLocation().distanceSquared(destination) > .0001) {
                 if (!session.display.teleport(destination)) { remove(id); continue; }
             }
-            visibility(owner, session);
+            if (ticks % 5 == 0) visibility(owner, session, false);
         }
     }
 
-    private void visibility(Player owner, TextSession session) {
+    private void visibility(Player owner, TextSession session, boolean forceAnchor) {
         Set<UUID> online = new HashSet<>();
         for (Player viewer : Bukkit.getOnlinePlayers()) {
             UUID id = viewer.getUniqueId();
             online.add(id);
-            boolean show = viewer.getWorld() == owner.getWorld() && visible(viewer, owner);
-            if (show && session.viewers.add(id)) viewer.showEntity(plugin, session.display);
-            else if (!show && session.viewers.remove(id)) viewer.hideEntity(plugin, session.display);
+            boolean show = viewer.getWorld() == owner.getWorld() && visible(viewer, owner)
+                    && (viewer == owner || owner.getTrackedBy().contains(viewer));
+            if (show && session.viewers.add(id)) {
+                viewer.showEntity(plugin, session.display);
+                anchor(viewer, owner, session.display);
+            } else if (!show && session.viewers.remove(id)) {
+                viewer.hideEntity(plugin, session.display);
+                if (viewer.getWorld() == owner.getWorld() && viewer.canSee(owner)) anchor(viewer, owner, null);
+            } else if (show && (forceAnchor || ticks % 20 == 0)) anchor(viewer, owner, session.display);
         }
         session.viewers.retainAll(online);
     }
 
     private void remove(UUID owner) {
         TextSession session = texts.remove(owner);
-        if (session != null) session.display.remove();
+        if (session == null) return;
+        Player player = Bukkit.getPlayer(owner);
+        if (player != null) for (UUID id : session.viewers) {
+            Player viewer = Bukkit.getPlayer(id);
+            if (viewer != null && viewer.getWorld() == player.getWorld() && viewer.canSee(player)) anchor(viewer, player, null);
+        }
+        session.display.remove();
     }
+
+    private void anchor(Player viewer, Player owner, TextDisplay display) {
+        if (passengerCodec == null || !viewer.isOnline()) return;
+        Object buffer = null;
+        try {
+            buffer = createBuffer.invoke(null);
+            int[] passengers = owner.getPassengers().stream().mapToInt(Entity::getEntityId).toArray();
+            if (display != null) {
+                passengers = java.util.Arrays.copyOf(passengers, passengers.length + 1);
+                passengers[passengers.length - 1] = display.getEntityId();
+            }
+            Object data = friendlyBuffer.newInstance(buffer);
+            writeInt.invoke(data, owner.getEntityId());
+            writeInts.invoke(data, (Object) passengers);
+            Object packet = decodePacket.invoke(passengerCodec, data);
+            if (getHandle == null) getHandle = viewer.getClass().getMethod("getHandle");
+            sendPacket.invoke(connection.get(getHandle.invoke(viewer)), packet);
+        } catch (ReflectiveOperationException | RuntimeException error) { packetFailure(error); }
+        finally {
+            if (buffer != null) try { releaseBuffer.invoke(buffer); }
+            catch (ReflectiveOperationException error) { packetFailure(error); }
+        }
+    }
+
+    private void packetFailure(Throwable error) {
+        if (packetWarning) return;
+        packetWarning = true;
+        plugin.getLogger().log(Level.WARNING, "Sinkronisasi teks roleplay belum dapat dipasang; periksa versi Paper 1.21.4.", error);
+    }
+
+    private void refreshMount(Player player) {
+        if (!closed && texts.containsKey(player.getUniqueId())) Bukkit.getScheduler().runTask(plugin, () -> {
+            TextSession session = texts.get(player.getUniqueId());
+            if (!closed && session != null && player.isOnline()) visibility(player, session, true);
+        });
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void mount(EntityMountEvent event) { if (event.getMount() instanceof Player player) refreshMount(player); }
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void dismount(EntityDismountEvent event) { if (event.getDismounted() instanceof Player player) refreshMount(player); }
 
     @EventHandler public void quit(PlayerQuitEvent event) {
         UUID id = event.getPlayer().getUniqueId();

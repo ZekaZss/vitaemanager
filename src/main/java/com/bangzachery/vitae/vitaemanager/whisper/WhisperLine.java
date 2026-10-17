@@ -1,11 +1,11 @@
 package com.bangzachery.vitae.vitaemanager.whisper;
 
-/** Text is literal, not player-supplied MiniMessage. Timing is in server ticks. */
+/** Text supports legacy colours, with no MiniMessage events. Timing is in server ticks. */
 public record WhisperLine(String title, String subtitle, int durationTicks, int gapTicks, Audio audio) {
     public WhisperLine {
         title = text(title);
         subtitle = text(subtitle);
-        if (title.isBlank() && subtitle.isBlank()) throw new IllegalArgumentException("Title dan subtitle tidak boleh keduanya kosong.");
+        if (WhisperText.plain(title).isBlank() && WhisperText.plain(subtitle).isBlank()) throw new IllegalArgumentException("Title dan subtitle tidak boleh keduanya kosong.");
         if (durationTicks < 20 || durationTicks > 1200 || gapTicks < 0 || gapTicks > 1200)
             throw new IllegalArgumentException("Durasi 1–60 detik; jeda 0–60 detik.");
     }

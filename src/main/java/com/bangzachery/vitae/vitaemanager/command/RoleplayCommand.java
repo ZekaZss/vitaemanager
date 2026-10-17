@@ -20,7 +20,6 @@ import java.util.Locale;
 public final class RoleplayCommand implements CommandExecutor, TabCompleter {
     private final ConfigurationService configuration;
     private final MessageService messages;
-    private final ServerControlService controls;
     private final RoleplayService roleplay;
     private final CarryService carry;
 
@@ -28,7 +27,6 @@ public final class RoleplayCommand implements CommandExecutor, TabCompleter {
                            ServerControlService controls, RoleplayService roleplay, CarryService carry) {
         this.configuration = configuration;
         this.messages = messages;
-        this.controls = controls;
         this.roleplay = roleplay;
         this.carry = carry;
     }
@@ -46,9 +44,7 @@ public final class RoleplayCommand implements CommandExecutor, TabCompleter {
             else messages.send(player, "roleplay-help");
             return true;
         }
-        if (controls.current().chatMuted() && !player.hasPermission("vitae.admin.chatbypass")) {
-            messages.send(player, "chat-muted"); return true;
-        }
+        // Panel mute applies to ordinary chat events, independently of RP commands.
         if (args.length == 0) { messages.send(player, "roleplay-help"); return true; }
         String text;
         try { text = RoleplayText.validate(String.join(" ", args), configuration.current().roleplay().maxTextLength()); }

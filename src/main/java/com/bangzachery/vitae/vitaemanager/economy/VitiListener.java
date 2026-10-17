@@ -19,6 +19,7 @@ public final class VitiListener implements Listener, AutoCloseable {
     private final VitiPaper paper;
     private final MessageService messages;
     private BukkitTask task;
+    private VitiShopkeepers shops;
 
     public VitiListener(JavaPlugin plugin, VitiService service, VitiPaper paper, MessageService messages) {
         this.plugin = plugin; this.service = service; this.paper = paper; this.messages = messages;
@@ -27,6 +28,8 @@ public final class VitiListener implements Listener, AutoCloseable {
     public void start() {
         service.tick();
         task = Bukkit.getScheduler().runTaskTimer(plugin, service::tick, 20L, 20L);
+        shops = new VitiShopkeepers(plugin, service, paper, messages);
+        shops.start();
     }
 
     @EventHandler public void join(PlayerJoinEvent event) { service.tick(); }
@@ -53,5 +56,8 @@ public final class VitiListener implements Listener, AutoCloseable {
         }
     }
 
-    @Override public void close() { if (task != null) task.cancel(); }
+    @Override public void close() {
+        if (task != null) task.cancel();
+        if (shops != null) shops.close();
+    }
 }

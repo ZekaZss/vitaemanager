@@ -9,9 +9,8 @@ public record WhisperArea(UUID world, int minX, int minY, int minZ, int maxX, in
         Objects.requireNonNull(world);
         if (minX > maxX || minY > maxY || minZ > maxZ
                 || minX < -30_000_000 || maxX > 30_000_000 || minZ < -30_000_000 || maxZ > 30_000_000
-                || minY < -4096 || maxY > 4096
-                || (long) maxX - minX > 255 || (long) maxZ - minZ > 255 || maxY - minY > 511) {
-            throw new IllegalArgumentException("Area tidak valid; maksimum 256 x 512 x 256 blok, kedua titik dalam dunia yang sama.");
+                || minY < -4096 || maxY > 4096) {
+            throw new IllegalArgumentException("Area tidak valid; periksa urutan sudut dan koordinat dunia.");
         }
     }
 

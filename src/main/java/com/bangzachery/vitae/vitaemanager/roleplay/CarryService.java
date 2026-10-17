@@ -28,6 +28,8 @@ public final class CarryService implements Listener, AutoCloseable {
     private final CarryPairs pairs = new CarryPairs();
     private BukkitTask task;
     private boolean closed;
+    private java.util.function.Predicate<Player> guard = player -> false;
+    public void guard(java.util.function.Predicate<Player> guard) { this.guard = java.util.Objects.requireNonNull(guard); }
 
     public CarryService(JavaPlugin plugin, ConfigurationService configuration,
                         MessageService messages, RoleplayService roleplay) {
@@ -43,6 +45,11 @@ public final class CarryService implements Listener, AutoCloseable {
 
     public void toggle(Player carrier) {
         if (closed) return;
+        if (guard.test(carrier)) {
+            releasePlayer(carrier.getUniqueId());
+            carrier.sendMessage(Component.text("Carry tidak boleh digunakan dalam dungeon.", net.kyori.adventure.text.format.NamedTextColor.RED));
+            return;
+        }
         reconcile();
         UUID riderId = pairs.rider(carrier.getUniqueId());
         if (riderId != null) {
@@ -76,7 +83,7 @@ public final class CarryService implements Listener, AutoCloseable {
     }
 
     private boolean eligible(Player player) {
-        return player.isOnline() && !player.isDead() && player.getGameMode() != GameMode.SPECTATOR
+        return !guard.test(player) && player.isOnline() && !player.isDead() && player.getGameMode() != GameMode.SPECTATOR
                 && player.getVehicle() == null
                 && player.getPassengers().stream().noneMatch(entity -> entity instanceof Player);
     }
@@ -95,7 +102,7 @@ public final class CarryService implements Listener, AutoCloseable {
     }
 
     private boolean validPair(Player carrier, Player rider) {
-        return carrier.isOnline() && rider.isOnline() && !carrier.isDead() && !rider.isDead()
+        return !guard.test(carrier) && !guard.test(rider) && carrier.isOnline() && rider.isOnline() && !carrier.isDead() && !rider.isDead()
                 && carrier.getVehicle() == null
                 && carrier.getGameMode() != GameMode.SPECTATOR && rider.getGameMode() != GameMode.SPECTATOR
                 && roleplay.visible(carrier, rider);

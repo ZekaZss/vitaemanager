@@ -23,16 +23,22 @@ public final class EvolutionCommand implements CommandExecutor, TabCompleter {
         usage.put("create", "create <id> — lihat crafting table");
         usage.put("source", "source <id> — pegang senjata awal");
         usage.put("result", "result <id> — pegang hasil evolusi");
+        usage.put("layout", "layout <id> — susun contoh bahan di GUI crafting admin, tutup untuk simpan");
+        usage.put("pedestal", "pedestal <id> <slot> — lihat block solid, slot 1/2/3/4/6/7/8/9, radius 16 block");
         usage.put("ingredient",
                 "ingredient <id> add <jumlah> | remove <nomor> — pegang bahan, lihat pedestal");
         usage.put("target", "target <id> add|remove <player|uuid>");
-        usage.put("preset", "preset <id> inferno|stormforge|void");
+        usage.put("preset", "preset <id> inferno|stormforge|void|astral|frost|phoenix");
         usage.put("settings",
                 "settings <id> duration|scale|density|soundradius|damageradius|damage <nilai>");
         usage.put("text", "text <id> <tahap> title | subtitle");
         usage.put("sound",
                 "sound <id> <tahap> private|public <namespace:sound|off> [volume] [pitch]");
 
+        usage.put("music", "music <id> public|private <namespace:sound> <detik> [volume] | music <id> off");
+        usage.put("aftermath", "aftermath <id> on [detik 2–15] | aftermath <id> off — adegan setelah ledakan");
+        usage.put("blast", "blast <id> lethal|off | blast <id> damage <jumlah>");
+        usage.put("effects", "effects <id> lightning on|off [jeda-detik] [radius] | effects <id> shockwave on|off");
         for (String action : List.of("enable", "disable", "info", "preview")) {
             usage.put(action, action + " <id>");
         }
@@ -86,6 +92,19 @@ public final class EvolutionCommand implements CommandExecutor, TabCompleter {
                     edit(sender, args[1], section -> section.set(action, sample));
                 }
                 case "ingredient" -> ingredient(sender, args);
+                case "layout" -> { exact(args, 2); service.layout(player(sender), id(args[1])); }
+                case "pedestal" -> {
+                    exact(args, 3); String altarId = id(args[1]); int slot = Integer.parseInt(args[2]);
+                    require(EvolutionGrid.ingredientSlot(slot), "Slot 1,2,3,4,6,7,8,9; slot 5 khusus senjata.");
+                    var altar = service.altar(altarId); var next = new ArrayList<>(altar.ingredients());
+                    int index = EvolutionGrid.index(altar, slot); require(index >= 0, "Slot ini belum punya bahan. Gunakan /evo layout " + altarId + ".");
+                    Block block = looked(player(sender)); require(block.getType().isSolid(), "Pedestal harus berupa block solid, misalnya lodestone.");
+                    Ingredient old = next.get(index); next.set(index, new Ingredient(old.item(), old.count(), EvolutionService.point(block), slot));
+                    edit(sender, altarId, section -> {
+                        section.set("ingredients", null); var root = section.createSection("ingredients");
+                        for (int i = 0; i < next.size(); i++) EvolutionStore.writeIngredient(root.createSection(Integer.toString(i + 1)), next.get(i));
+                    });
+                }
                 case "target" -> {
                     exact(args, 4);
                     var targets = new HashSet<>(
@@ -127,7 +146,7 @@ public final class EvolutionCommand implements CommandExecutor, TabCompleter {
                     require(key != null, "Pengaturan tidak dikenal.");
 
                     double value = Double.parseDouble(args[3]);
-                    edit(sender, args[1], section -> section.set(key, value));
+                    edit(sender, args[1], section -> { section.set(key, value); if (key.equals("damage")) section.set("lethal", false); });
                 }
                 case "text" -> {
                     require(args.length >= 4,
@@ -168,6 +187,51 @@ public final class EvolutionCommand implements CommandExecutor, TabCompleter {
                                     ? Float.parseFloat(args[6]) : old.pitch()
                     ));
                 }
+                case "music" -> {
+                    if (args.length == 3 && args[2].equalsIgnoreCase("off")) {
+                        edit(sender, args[1], section -> section.set("music.sound", ""));
+                    } else {
+                        require(args.length == 5 || args.length == 6, "Gunakan /evo " + usage.get("music"));
+                        require(args[2].equalsIgnoreCase("private") || args[2].equalsIgnoreCase("public"), "Musik: private atau public.");
+                        double seconds = Double.parseDouble(args[4]); range(seconds, 5, 120, "Durasi musik");
+                        Music music = new Music(args[3], args[2].equalsIgnoreCase("private"),
+                                args.length == 6 ? Float.parseFloat(args[5]) : .8f, (int) Math.round(seconds * 20));
+                        edit(sender, args[1], section -> {
+                            section.set("duration", music.ticks() / 20.0); section.set("music.sound", music.sound());
+                            section.set("music.private", music.privateSound()); section.set("music.volume", music.volume());
+                        });
+                    }
+                }
+                case "aftermath" -> {
+                    require(args.length == 3 || args.length == 4, "Gunakan /evo " + usage.get("aftermath"));
+                    require(args[2].equalsIgnoreCase("on") || args[2].equalsIgnoreCase("off"), "Adegan: on atau off.");
+                    require(args[2].equalsIgnoreCase("on") || args.length == 3, "Off tidak memerlukan durasi.");
+                    double seconds = args.length == 4 ? Double.parseDouble(args[3]) : service.altar(id(args[1])).aftermath().ticks() / 20.0;
+                    range(seconds, 2, 15, "Adegan penutup");
+                    edit(sender, args[1], section -> { section.set("aftermath.enabled", args[2].equalsIgnoreCase("on")); section.set("aftermath.duration", seconds); });
+                }
+                case "blast" -> {
+                    require(args.length == 3 || args.length == 4, "Gunakan /evo " + usage.get("blast"));
+                    String mode = args[2].toLowerCase(Locale.ROOT);
+                    require(List.of("lethal", "damage", "off").contains(mode), "Ledakan: lethal, damage, atau off.");
+                    require(args.length == (mode.equals("damage") ? 4 : 3), "Gunakan /evo " + usage.get("blast"));
+                    double damage = mode.equals("damage") ? Double.parseDouble(args[3]) : 0; range(damage, 0, 1000, "Damage");
+                    edit(sender, args[1], section -> { section.set("lethal", mode.equals("lethal")); section.set("damage", damage); });
+                }
+                case "effects" -> {
+                    require(args.length >= 4 && args.length <= 6, "Gunakan /evo " + usage.get("effects"));
+                    String effect = args[2].toLowerCase(Locale.ROOT);
+                    require(List.of("lightning", "shockwave").contains(effect), "Efek: lightning atau shockwave.");
+                    require(args[3].equalsIgnoreCase("on") || args[3].equalsIgnoreCase("off"), "Efek: on atau off.");
+                    require(effect.equals("lightning") || args.length == 4, "Shockwave cukup on/off.");
+                    double interval = args.length >= 5 ? Double.parseDouble(args[4]) : 1.5;
+                    double radius = args.length == 6 ? Double.parseDouble(args[5]) : 3;
+                    range(interval, .5, 10, "Jeda petir"); range(radius, 0, 8, "Radius petir");
+                    edit(sender, args[1], section -> {
+                        section.set("effects." + effect, args[3].equalsIgnoreCase("on"));
+                        if (effect.equals("lightning")) { section.set("effects.interval-ticks", (int) Math.round(interval * 20)); section.set("effects.radius", radius); }
+                    });
+                }
                 case "enable", "disable" -> {
                     exact(args, 2);
                     edit(sender, args[1],
@@ -192,13 +256,16 @@ public final class EvolutionCommand implements CommandExecutor, TabCompleter {
                             + " | scale " + altar.scale()
                             + " | density " + altar.density());
                     service.say(sender, "Radius suara " + altar.soundRadius()
-                            + " | damage " + altar.damage()
+                            + " | ledakan " + (altar.lethal() ? "LETHAL (memicu totem jika tersedia)" : altar.damage())
                             + " | radius damage " + altar.damageRadius());
 
+                    service.say(sender, "Musik " + (altar.music().sound().isEmpty() ? "off" : altar.music().sound())
+                            + " | volume " + altar.music().volume() + " | petir " + altar.effects().lightning());
+                    service.say(sender, "Adegan setelah ledakan " + (altar.aftermath().enabled() ? altar.aftermath().ticks() / 20.0 + "s" : "OFF"));
                     for (int i = 0; i < altar.ingredients().size(); i++) {
-                        service.say(sender, "Bahan " + (i + 1) + ": x"
+                        service.say(sender, "Bahan " + (i + 1) + " [slot " + altar.ingredients().get(i).slot() + "]: x"
                                 + altar.ingredients().get(i).count()
-                                + " di " + altar.ingredients().get(i).point().encode());
+                                + " di " + (altar.ingredients().get(i).point() == null ? "BELUM DISET — /evo pedestal " + altar.id() + " " + altar.ingredients().get(i).slot() : altar.ingredients().get(i).point().encode()));
                     }
                 }
                 case "preview" -> {
@@ -215,7 +282,10 @@ public final class EvolutionCommand implements CommandExecutor, TabCompleter {
                 case "pending" -> {
                     exact(args, 1);
                     var pending = service.pending();
-                    if (pending.isEmpty()) {
+                    var deposits = service.pendingDeposits();
+                    deposits.forEach(d -> service.say(sender, d.owner() + " | " + d.altar() + " | SETORAN " + d.items().size() + "/9 slot"
+                            + (d.transfer() == null ? "" : " | transaksi tertunda")));
+                    if (pending.isEmpty() && deposits.isEmpty()) {
                         service.say(sender, "Tidak ada ritual tertunda.");
                     } else {
                         pending.forEach(ticket -> service.say(sender,
@@ -267,7 +337,10 @@ public final class EvolutionCommand implements CommandExecutor, TabCompleter {
             var ingredient = new Ingredient(
                     service.sample(player),
                     Integer.parseInt(args[3]),
-                    EvolutionService.point(looked(player))
+                    EvolutionService.point(looked(player)),
+                    java.util.stream.IntStream.range(0, 8).map(EvolutionGrid::rawSlot)
+                            .filter(slot -> EvolutionGrid.index(altar, slot) < 0).findFirst()
+                            .orElseThrow(() -> new IllegalArgumentException("Delapan slot bahan sudah terisi."))
             );
 
             edit(sender, id, section -> EvolutionStore.writeIngredient(
@@ -322,15 +395,17 @@ public final class EvolutionCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
+        sender.sendMessage(net.kyori.adventure.text.Component.empty());
+        sender.sendMessage(net.kyori.adventure.text.Component.text("━━ Bantuan Evolusi ━━", net.kyori.adventure.text.format.NamedTextColor.GOLD));
         topic = topic.toLowerCase(Locale.ROOT);
 
         if (topic.equals("setup")) {
             for (String key : List.of(
-                    "create", "source", "result", "ingredient", "target", "enable")) {
+                    "create", "source", "result", "layout", "pedestal", "ingredient", "target", "enable")) {
                 service.say(sender, "/evo " + usage.get(key));
             }
             service.say(sender,
-                    "Pedestal berbeda, solid, maksimal 8 block dari altar. Tunggu pesan tersimpan sebelum command berikutnya.");
+                    "Pedestal berbeda, solid, maksimal 16 block dari altar. Susunan GUI: baris atas 1/2/3, tengah 4/5/6, bawah 7/8/9; slot 5 senjata. Tunggu pesan tersimpan sebelum command berikutnya.");
         } else if (usage.containsKey(topic)) {
             service.say(sender, "/evo " + usage.get(topic));
         } else {
@@ -339,9 +414,16 @@ public final class EvolutionCommand implements CommandExecutor, TabCompleter {
             usage.values().forEach(line -> service.say(sender, "/evo " + line));
         }
 
+        sender.sendMessage(net.kyori.adventure.text.Component.empty());
+        if (topic.equals("music")) service.say(sender, "Durasi musik menentukan waktu ledakan. Cocokkan panjang rekaman custom; pitch tetap 1. Volume 0–1; radius melalui soundradius. ID custom harus ada di resource pack ItemsAdder.");
+        if (topic.equals("aftermath")) service.say(sender, "Default ON 5 detik: hening 1 detik, hasil melayang, title, lalu item diberikan. Durasi musik tetap sampai ledakan; adegan ini tambahan. Setelah ledakan tidak ada refund otomatis; hasil tertunda dapat dipulihkan admin.");
+        if (topic.equals("blast")) service.say(sender, "Lethal lewat sistem totem; tanpa totem pemain mati. Radius dari crafting table. Preview tanpa damage.");
+        if (topic.equals("effects")) service.say(sender, "Petir visual tanpa api/damage: jeda 0.5–10s, radius 0–8. Shockwave berupa particle.");
+        if (topic.equals("layout")) service.say(sender, "Contoh disalin dari cursor; item admin tetap milik admin. Klik kosong menghapus slot. Tutup menyimpan draft OFF; lengkapi pedestal, lalu enable.");
+        if (topic.equals("pedestal")) service.say(sender, "Lihat alas display dalam jarak 6 block dari admin. Jarak pedestal dari altar maksimal 16 block; di world yang sama dan tidak duplikat.");
         if (topic.equals("settings")) {
             service.say(sender,
-                    "Duration 5–120 detik; scale 0.5–2; density 8–64; soundradius 1–64; damageradius 0–16; damage 0–1000. Damage default 0.");
+                    "Duration 5–120 detik; scale 0.5–2; density 8–64; soundradius 1–64; damageradius 0–16; damage 0–1000. Altar lama mempertahankan damage lama; aktifkan lethal melalui /evo blast.");
         }
         if (topic.equals("text") || topic.equals("sound")) {
             service.say(sender,
@@ -380,19 +462,24 @@ public final class EvolutionCommand implements CommandExecutor, TabCompleter {
                                     .map(Player::getName).toList();
                     case "source", "result", "ingredient", "target", "preset",
                          "settings", "text", "sound", "enable", "disable",
-                         "info", "preview", "delete" ->
+                         "info", "preview", "delete", "music", "blast", "effects", "layout", "pedestal", "aftermath" ->
                             service.ids().stream().toList();
                     default -> List.of();
                 };
             } else if (args.length == 3) {
                 choices = switch (action) {
+                    case "pedestal" -> List.of("1", "2", "3", "4", "6", "7", "8", "9");
                     case "ingredient", "target" -> List.of("add", "remove");
-                    case "preset" -> List.of("inferno", "stormforge", "void");
+                    case "preset" -> Arrays.stream(Preset.values()).map(p -> p.name().toLowerCase(Locale.ROOT)).toList();
                     case "settings" -> List.of(
                             "duration", "scale", "density",
                             "soundradius", "damageradius", "damage");
                     case "text", "sound" -> List.of(
                             "awaken", "lift", "orbit", "absorb", "finish");
+                    case "music" -> List.of("public", "private", "off");
+                    case "blast" -> List.of("lethal", "damage", "off");
+                    case "effects" -> List.of("lightning", "shockwave");
+                    case "aftermath" -> List.of("on", "off");
                     case "recover" -> List.of("refund", "result", "discard");
                     case "delete" -> List.of("confirm");
                     default -> List.of();
@@ -402,6 +489,8 @@ public final class EvolutionCommand implements CommandExecutor, TabCompleter {
                     case "target" -> Bukkit.getOnlinePlayers().stream()
                             .map(Player::getName).toList();
                     case "sound" -> List.of("private", "public");
+                    case "effects" -> List.of("on", "off");
+                    case "music" -> Registry.SOUNDS.stream().map(sound -> Registry.SOUNDS.getKeyOrThrow(sound).toString()).toList();
                     case "ingredient" -> List.of("1", "2", "4", "8");
                     case "recover" -> List.of("confirm");
                     default -> List.of();
@@ -413,6 +502,10 @@ public final class EvolutionCommand implements CommandExecutor, TabCompleter {
                         .map(sound -> Registry.SOUNDS.getKeyOrThrow(sound).toString())
                         .forEach(keys::add);
                 choices = keys;
+            } else if (args.length == 5 && action.equals("music")) {
+                choices = List.of("9", "15", "30", "60");
+            } else if (args.length == 6 && action.equals("music")) {
+                choices = List.of("0.5", "0.8", "1.0");
             } else if (args.length == 6 && action.equals("sound")) {
                 choices = List.of("0.2", "0.5", "0.8", "1.0");
             } else if (args.length == 7 && action.equals("sound")) {

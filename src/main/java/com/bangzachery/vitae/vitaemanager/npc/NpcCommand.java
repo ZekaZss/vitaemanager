@@ -17,9 +17,9 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     private record Corners(Location a, Location b) {}
     private final NpcService service;
     private final Map<UUID, Corners> selections = new HashMap<>();
-    private static final List<String> TOPICS = List.of("dialog", "hadiah", "ladang", "mob", "pemicu", "tampilan", "kelola");
-    private static final List<String> ACTIONS = List.of("help", "move", "stand", "look", "offset", "height", "skin", "model", "page", "option",
-            "clearoptions", "root", "repeat", "speed", "pos1", "pos2", "trigger", "quest", "queststart", "reward", "on", "off", "preview", "reset", "delete");
+    private static final List<String> TOPICS = List.of("dialog", "hadiah", "ladang", "mob", "pemicu", "gerbang", "tampilan", "ingatan", "kelola");
+    private static final List<String> ACTIONS = List.of("help", "move", "stand", "look", "offset", "name", "nametag", "track", "remember", "memory", "height", "skin", "model", "page", "option",
+            "clearoptions", "root", "repeat", "speed", "wand", "pos1", "pos2", "trigger", "gate", "quest", "queststart", "reward", "on", "off", "preview", "reset", "delete");
     public NpcCommand(NpcService service) { this.service = service; }
     @Override public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (command.getName().equalsIgnoreCase("quest")) {
@@ -59,6 +59,41 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                     help(sender, id, args.length == 3 ? args[2] : ""); return true;
                 }
                 case "delete" -> { require(args.length == 2, "/vnpc <id> delete"); service.delete(id); }
+                case "name" -> {
+                    require(args.length >= 3, "/vnpc <id> name <nama>; warna contoh &6Penjaga &eGerbang");
+                    String name = join(args, 2); require(!NpcText.plain(name).isBlank(), "Nama harus memiliki teks, bukan hanya kode warna.");
+                    service.edit(id, j -> j.addProperty("name", name), false);
+                }
+                case "nametag", "track" -> {
+                    require(args.length == 3 && Set.of("on", "off").contains(args[2].toLowerCase(Locale.ROOT)), "/vnpc <id> " + action + " on|off");
+                    var appearance = new NpcData.Appearance(action.equals("nametag") ? args[2].equalsIgnoreCase("on") : d.appearance().nametag(),
+                            action.equals("track") ? args[2].equalsIgnoreCase("on") : d.appearance().track());
+                    service.edit(id, j -> j.add("appearance", NpcStore.JSON.toJsonTree(appearance)), false);
+                }
+                case "remember" -> {
+                    require(args.length == 6 || args.length == 5 && args[4].equalsIgnoreCase("off"), "/vnpc <id> remember <halaman> <nomor-pilihan> <kunci> <nilai> | ... off");
+                    var node = d.nodes().get(args[2]); require(node != null, "Halaman tidak ditemukan.");
+                    int index = Integer.parseInt(args[3]) - 1; require(index >= 0 && index < node.choices().size(), "Nomor pilihan belum ada; buat option dulu.");
+                    var choices = new ArrayList<>(node.choices()); var old = choices.get(index);
+                    choices.set(index, new NpcData.Choice(old.label(), old.target(), args.length == 5 ? "" : args[4], args.length == 5 ? "" : args[5]));
+                    service.edit(id, j -> j.getAsJsonObject("nodes").add(args[2], NpcStore.JSON.toJsonTree(new NpcData.Node(node.text(), choices))), false);
+                }
+                case "memory" -> {
+                    if (args.length == 3 && args[2].equalsIgnoreCase("status")) {
+                        for (var rule : d.memory()) NpcService.message(p, rule.key() + "=" + rule.value() + " → " + rule.page());
+                        for (var entry : d.nodes().entrySet()) for (int i = 0; i < entry.getValue().choices().size(); i++) {
+                            var choice = entry.getValue().choices().get(i);
+                            if (!choice.memoryKey().isEmpty()) NpcService.message(p, entry.getKey() + " pilihan " + (i + 1) + " menyimpan " + choice.memoryKey() + "=" + choice.memoryValue());
+                        }
+                        return true;
+                    }
+                    require(args.length == 5 || args.length == 3 && args[2].equalsIgnoreCase("clear"), "/vnpc <id> memory <kunci> <nilai> <halaman> | clear | status");
+                    var rules = new ArrayList<>(d.memory());
+                    if (args.length == 3) rules.clear();
+                    else { var rule = new NpcData.MemoryRule(args[2], args[3], args[4]); require(d.nodes().containsKey(rule.page()), "Buat halaman tujuan dengan page terlebih dahulu.");
+                        rules.removeIf(old -> old.key().equals(rule.key()) && old.value().equals(rule.value())); rules.add(rule); }
+                    service.edit(id, j -> j.add("memory", NpcStore.JSON.toJsonTree(rules)), false);
+                }
                 case "look" -> {
                     require(args.length == 2, "/vnpc <id> look"); Location look = p.getLocation(); var old = d.location();
                     var location = new NpcData.Point(old.world(), old.x(), old.y(), old.z(), look.getYaw(), look.getPitch());
@@ -94,9 +129,9 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                     service.edit(id, j -> j.getAsJsonObject("nodes").add(args[2], NpcStore.JSON.toJsonTree(node)), false);
                 }
                 case "option" -> {
-                    require(args.length >= 5, "/vnpc <id> option <halaman> <tujuan|END|QUEST> <label>");
+                    require(args.length >= 5, "/vnpc <id> option <halaman> <tujuan|END|QUEST|OPEN|DUNGEON_GLASS|DUNGEON_MINION|DUNGEON_BOSS|ACTION_id> <label>");
                     NpcData.Node old = d.nodes().get(args[2]); require(old != null, "Halaman belum ada; gunakan page dahulu.");
-                    String target = Set.of("END", "QUEST").contains(args[3].toUpperCase(Locale.ROOT)) ? args[3].toUpperCase(Locale.ROOT) : args[3];
+                    String target = Set.of("END", "QUEST", "OPEN").contains(args[3].toUpperCase(Locale.ROOT)) ? args[3].toUpperCase(Locale.ROOT) : args[3];
                     var choices = new ArrayList<>(old.choices()); choices.add(new NpcData.Choice(join(args, 4), target));
                     var node = new NpcData.Node(old.text(), choices);
                     service.edit(id, j -> j.getAsJsonObject("nodes").add(args[2], NpcStore.JSON.toJsonTree(node)), false);
@@ -110,6 +145,19 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                     require(args.length >= 3, "/vnpc <id> " + action + " <teks/id>");
                     service.edit(id, j -> j.addProperty(action, join(args, 2)), false);
                 }
+                case "wand" -> {
+                    require(args.length==3,"/vnpc <id> wand quest|trigger|gate");String mode=args[2].toLowerCase(Locale.ROOT);
+                    require(Set.of("quest","trigger","gate").contains(mode),"Wand: quest, trigger, gate.");
+                    var tool=com.bangzachery.vitae.vitaemanager.selection.SelectionService.require();
+                    var kind=mode.equals("trigger")?com.bangzachery.vitae.vitaemanager.selection.SelectionService.Mode.WALK:
+                        mode.equals("quest")?com.bangzachery.vitae.vitaemanager.selection.SelectionService.Mode.VOLUME:com.bangzachery.vitae.vitaemanager.selection.SelectionService.Mode.BLOCKS;
+                    tool.arm(p,"vitae.admin.npc","NPC "+id+" • "+mode,kind,(admin,a,b)->{
+                        var selected=com.bangzachery.vitae.vitaemanager.selection.SelectionService.area(a,b);
+                        if(mode.equals("gate"))service.setupGate(admin,id,selected);
+                        else if(mode.equals("trigger")){service.edit(id,j->j.add("trigger",NpcStore.JSON.toJsonTree(selected)),false);NpcService.message(admin,"Pemicu tersimpan. Aktifkan NPC setelah setup selesai.");}
+                        else{selections.put(admin.getUniqueId(),new Corners(a,b));NpcService.message(admin,"Area quest dipilih. Berdiri di titik start dalam area, lalu /vnpc "+id+" quest farm <putaran> atau quest mob <jumlah> <jenis>.");}
+                    });return true;
+                }
                 case "pos1", "pos2" -> {
                     require(args.length == 2, "/vnpc <id> " + action); var block = p.getTargetBlockExact(6);
                     Location point = block == null ? p.getLocation().getBlock().getLocation() : block.getLocation();
@@ -122,14 +170,40 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                     var trigger = args[2].equals("set") ? area(p) : null;
                     service.edit(id, j -> j.add("trigger", trigger == null ? JsonNull.INSTANCE : NpcStore.JSON.toJsonTree(trigger)), false);
                 }
+                case "gate" -> {
+                    require(args.length == 3 || args.length == 4 && args[2].equalsIgnoreCase("autoclose"), "/vnpc <id> gate pos1|pos2|set|status|reset|off|cancel | gate autoclose <detik|off>");
+                    switch (args[2].toLowerCase(Locale.ROOT)) {
+                        case "pos1", "pos2" -> { service.gateSelect(p, id, args[2].equalsIgnoreCase("pos1")); return true; }
+                        case "cancel" -> { service.gateCancel(p); NpcService.message(p, "Mode pemilihan block dibatalkan."); return true; }
+                        case "autoclose" -> {
+                            require(args.length == 4 && d.gate() != null, "/vnpc <id> gate autoclose <1–3600|off>; setup gate terlebih dahulu.");
+                            int seconds = args[3].equalsIgnoreCase("off") ? 0 : Integer.parseInt(args[3]);
+                            require(seconds > 0 || args[3].equalsIgnoreCase("off"), "Gunakan angka 1–3600 atau off.");
+                            var gate = d.gate().withDelay(seconds, System.currentTimeMillis());
+                            service.edit(id, j -> j.add("gate", NpcStore.JSON.toJsonTree(gate)), false);
+                        }
+                        case "set" -> service.gateSet(p, id);
+                        case "reset" -> service.gateReset(id);
+                        case "off" -> service.edit(id, json -> json.add("gate", JsonNull.INSTANCE), false);
+                        case "status" -> {
+                            NpcService.message(p, d.gate() == null ? "Gerbang belum diset." : "Gerbang " + d.gate().status() + "; " + d.gate().blocks().size() + " block; tutup otomatis " + (d.gate().timing().seconds() == 0 ? "OFF" : d.gate().timing().seconds() + " detik") + ". OPEN = dapat dilewati semua pemain.");
+                            return true;
+                        }
+                        default -> throw new IllegalArgumentException("Gate: pos1, pos2, set, status, reset, off, cancel.");
+                    }
+                }
                 case "quest" -> {
-                    require(args.length >= 3, "/vnpc <id> quest farm <gelombang> | mob <jumlah> <COW> | off");
+                    require(args.length >= 3, "/vnpc <id> quest farm <gelombang> | mob <jumlah> <COW> | off | cancel");
+                    if (args[2].equalsIgnoreCase("cancel")) {
+                        require(args.length == 3, "/vnpc <id> quest cancel"); service.cancelFarmSetup(id); return true;
+                    }
                     NpcData.Quest q;
                     if (args[2].equalsIgnoreCase("off") && args.length == 3) q = NpcData.Quest.none();
                     else {
                         require(args.length >= 4, "Masukkan jumlah target quest."); int goal = Integer.parseInt(args[3]); WhisperArea selected = area(p);
-                        if (args[2].equalsIgnoreCase("farm") && args.length == 4) q = new NpcData.Quest(NpcData.QuestKind.FARM, selected,
-                                NpcRenderer.point(p.getLocation()), goal, "COW", NpcQuest.scan(selected), NpcData.Reward.none());
+                        if (args[2].equalsIgnoreCase("farm") && args.length == 4) {
+                            service.setupFarm(p, id, selected, goal); return true;
+                        }
                         else {
                             require(args[2].equalsIgnoreCase("mob") && args.length == 5, "/vnpc <id> quest mob <jumlah> <jenis-mob>");
                             var mob = NpcQuest.mobType(args[4]); q = new NpcData.Quest(NpcData.QuestKind.MOB, selected,
@@ -221,10 +295,12 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     private static String topic(String action) {
         return switch (action) {
             case "page", "option", "clearoptions", "root", "speed" -> "dialog";
+            case "memory", "remember" -> "ingatan";
             case "reward", "repeat" -> "hadiah";
-            case "pos1", "pos2", "trigger" -> "pemicu";
+            case "wand", "pos1", "pos2", "trigger" -> "pemicu";
+            case "gate" -> "gerbang";
             case "quest", "queststart" -> "ladang";
-            case "skin", "model", "height", "move", "stand", "look", "offset" -> "tampilan";
+            case "skin", "model", "height", "move", "stand", "look", "offset", "name", "nametag", "track" -> "tampilan";
             default -> "kelola";
         };
     }
@@ -243,6 +319,8 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 tip(sender, cmd + "speed 1", "Kecepatan mengetik 1–8 karakter per pembaruan");
                 tip(sender, cmd + "clearoptions start", "Hapus pilihan halaman start sebelum menyusun ulang");
                 note(sender, "page memperbarui teks, option menambah pilihan. Halaman tanpa pilihan otomatis punya Keluar...");
+                note(sender, "Dungeon bersama: target DUNGEON_GLASS, DUNGEON_MINION, atau DUNGEON_BOSS. Hubungkan NPC melalui /vdungeon <id> npc <tahap> <id-npc>.");
+                note(sender, "Aksi teleport/spawn terpisah: target ACTION_<id>. Setup melalui /vdungeon help aksi.");
             }
             case "hadiah" -> {
                 tip(sender, cmd + "page start Terima kasih sudah mendengarkan ceritaku.", "Tulis dialog sebelum hadiah");
@@ -255,17 +333,21 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             }
             case "ladang" -> {
                 note(sender, "Siapkan tanaman di atas farmland. Tandai area, lalu berdiri di titik awal player dalam area.");
-                tip(sender, cmd + "pos1", "Lihat blok sudut A, lalu jalankan command");
+                tip(sender, cmd + "wand quest", "Ambil alat untuk memilih area ladang dengan dua klik");
                 tip(sender, cmd + "pos2", "Lihat blok sudut B yang mencakup tanaman");
-                tip(sender, cmd + "quest farm 5", "Baca tanaman; lima putaran panen");
+                tip(sender, cmd + "quest farm 5", "Baca tanaman bertahap; lima putaran panen; tunggu pesan Ladang tersimpan");
+                tip(sender, cmd + "quest cancel", "Batalkan pemindaian; konfigurasi lama tetap tersimpan");
                 tip(sender, cmd + "queststart", "Simpan tempat awal player dalam area");
                 tip(sender, cmd + "reward quest viti 1000", "Hadiah ladang wajib Viti");
                 tip(sender, cmd + "page start Bantu aku memanen ladang ini.", "Tulis tawaran quest");
                 tip(sender, cmd + "option start QUEST Terima quest.", "Pilihan menerima pekerjaan");
                 tip(sender, cmd + "option start END Keluar...", "Pilihan menolak");
                 note(sender, "Pemain wajib punya iron hoe. Pos1/pos2 adalah blok yang dilihat, maksimal enam blok.");
+                note(sender, "Tidak ada batas 512 tanaman atau volume 8192 blok. Tetap pakai area A–B yang valid.");
+                note(sender, "Rescan farm mempertahankan hadiah Viti lama. Sesudah Ladang tersimpan, atur hadiah lalu on.");
             }
             case "mob" -> {
+                tip(sender, cmd + "wand quest", "Pilih area quest dengan dua klik");
                 note(sender, "Tandai area A–B yang aman, lalu berdiri di titik awal player dalam area.");
                 tip(sender, cmd + "pos1", "Tandai sudut A");
                 tip(sender, cmd + "pos2", "Tandai sudut B");
@@ -278,6 +360,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 note(sender, "Pemain wajib punya iron sword dan memakainya di tangan utama saat membunuh mob quest.");
             }
             case "pemicu" -> {
+                tip(sender, cmd + "wand trigger", "Klik dua blok lantai; pemicu dialog otomatis tersimpan");
                 note(sender, "Pilih dua sudut lorong yang mencakup ketinggian kaki player, dalam dunia NPC.");
                 tip(sender, cmd + "pos1", "Tandai sudut A; mengambil blok yang dilihat");
                 tip(sender, cmd + "pos2", "Tandai sudut B");
@@ -286,7 +369,32 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 tip(sender, cmd + "stand", "Berdiri di depan NPC untuk menyimpan posisi bicara");
                 note(sender, "Letakkan stand di luar pemicu. Shift membatalkan; percakapan dipicu lagi sampai selesai.");
             }
+            case "gerbang" -> {
+                note(sender, "Bangun dinding solid biasa; NPC dan posisi bicara berada di luarnya. Gerbang terbuka global untuk semua pemain.");
+                tip(sender, cmd + "wand gate", "Dua klik memilih dinding; pemindaian/simpan otomatis");
+                tip(sender, cmd + "gate pos1", "Aktifkan pemilihan A, lalu pukul block sudut dinding; block tidak pecah");
+                tip(sender, cmd + "gate pos2", "Aktifkan pemilihan B, lalu pukul sudut diagonal seberangnya");
+                tip(sender, cmd + "gate set", "Simpan dinding tanpa batas jumlah blok; pemindaian berjalan bertahap");
+                tip(sender, cmd + "page start Kamu boleh masuk. Akan kubukakan gerbangnya.", "Tulis dialog penjaga");
+                tip(sender, cmd + "clearoptions start", "Hapus pilihan lama sebelum menyusun ulang");
+                tip(sender, cmd + "option start OPEN Bukakan gerbangnya.", "Pilihan membuka gerbang dan menyelesaikan dialog");
+                tip(sender, cmd + "option start END Nanti saja.", "Menutup dialog tanpa membuka gerbang");
+                tip(sender, cmd + "repeat Gerbang sudah terbuka. Silakan lewat.", "Dialog saat pemain yang sama datang lagi");
+                tip(sender, cmd + "gate autoclose 30", "Tutup otomatis 30 detik setelah terbuka; 1–3600 detik");
+                tip(sender, cmd + "gate autoclose off", "Biarkan terbuka sampai reset manual");
+                tip(sender, cmd + "gate status", "Lihat CLOSED/OPENING/OPEN/CLOSING dan durasi");
+                note(sender, "Peringatan lima detik terakhir. Pemain di posisi dinding menunda penutupan. Klik lain tidak mengulang timer.");
+                note(sender, "Saat tertutup, pemain lama boleh membuka lagi; hadiah dialog tetap sekali per pemain.");
+                tip(sender, cmd + "gate reset", "Pulihkan dinding dari snapshot untuk tes ulang; NPC menjadi OFF");
+                tip(sender, cmd + "gate cancel", "Batalkan mode pukul untuk memilih titik");
+                note(sender, "Klik pertama mengklaim gerbang; klik bersamaan tidak memulai animasi tambahan. Preview tidak menghancurkan dinding.");
+                note(sender, "Jauhkan pemain dari dinding sebelum reset. gate off melepas pengaturan tanpa membangun kembali dinding.");
+            }
             case "tampilan" -> {
+                tip(sender, cmd + "name &6Penjaga &eGerbang", "Ganti nama dan warna; nama biasa juga boleh");
+                tip(sender, cmd + "nametag off", "Sembunyikan nama di atas kepala; on menampilkannya lagi");
+                tip(sender, cmd + "track on", "NPC menoleh saat dialog; off mempertahankan arah awal");
+                note(sender, "Kode warna &0–&f; &l tebal, &o miring, &r reset. Nama di dialog memakai warna yang sama.");
                 tip(sender, cmd + "skin NamaPemain", "Pakai skin akun premium atau pemain online");
                 tip(sender, cmd + "model id_model", "Pakai model custom; perlu ModelEngine 4");
                 tip(sender, cmd + "height 1.62", "Tinggi kepala untuk arah kamera; rentang 0.2–8");
@@ -297,6 +405,21 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 tip(sender, cmd + "offset 0 0", "Reset offset arah");
                 note(sender, "Yaw memutar kiri/kanan (-360–360). Pitch mengatur kepala atas/bawah (-90–90); positif melihat ke bawah.");
                 note(sender, "Pilih skin manusia atau model. Hindari posisi berdiri di dalam blok.");
+            }
+            case "ingatan" -> {
+                tip(sender, cmd + "page start Maukah kamu membantuku?", "Buat pertanyaan awal");
+                tip(sender, cmd + "clearoptions start", "Susun pilihan dari awal");
+                tip(sender, cmd + "option start END Aku akan membantu.", "Pilihan pertama");
+                tip(sender, cmd + "option start END Aku menolak.", "Pilihan kedua");
+                tip(sender, cmd + "remember start 1 sikap membantu", "Pilihan pertama menyimpan sikap=membantu");
+                tip(sender, cmd + "remember start 2 sikap menolak", "Pilihan kedua menyimpan sikap=menolak");
+                tip(sender, cmd + "page ramah Terima kasih sudah bersedia membantuku.", "Dialog untuk pemain yang membantu");
+                tip(sender, cmd + "page dingin Kamu pernah menolakku. Ada perlu apa lagi?", "Dialog untuk pemain yang menolak");
+                tip(sender, cmd + "memory sikap membantu ramah", "Pertemuan berikutnya dimulai di halaman ramah");
+                tip(sender, cmd + "memory sikap menolak dingin", "Pertemuan berikutnya dimulai di halaman dingin");
+                tip(sender, cmd + "memory status", "Cek aturan dan pilihan yang menyimpan ingatan");
+                note(sender, "Nomor pilihan mulai dari 1. Ingatan tersimpan setelah konfirmasi pilihan; preview tidak menyimpan. Hadiah tetap sekali.");
+                note(sender, "memory clear menghapus aturan, bukan ingatan pemain. remember start 1 off melepas penyimpanan pilihan.");
             }
             case "kelola" -> {
                 tip(sender, "/vnpc list", "Lihat seluruh ID NPC");
@@ -314,6 +437,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 purposes(sender, id);
                 tip(sender, id.equals("<id>") ? "/vnpc help tampilan" : cmd + "help tampilan", "Skin/model dan posisi NPC");
                 tip(sender, id.equals("<id>") ? "/vnpc help pemicu" : cmd + "help pemicu", "Area pemicu dialog wajib");
+                tip(sender, id.equals("<id>") ? "/vnpc help gerbang" : cmd + "help gerbang", "Dialog yang membuka dinding dengan animasi");
                 tip(sender, id.equals("<id>") ? "/vnpc help kelola" : cmd + "help kelola", "Aktif/nonaktif, reset, hapus, dan daftar NPC");
                 note(sender, "Bantuan untuk NPC tertentu: /vnpc <id> help <topik>. Ganti <id> dengan ID NPC milikmu.");
             }
@@ -338,13 +462,20 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         else if (a.length == 3) switch (a[1].toLowerCase(Locale.ROOT)) {
             case "help" -> values.addAll(TOPICS);
             case "trigger" -> values.addAll(List.of("set", "off"));
-            case "quest" -> values.addAll(List.of("farm", "mob", "off"));
+            case "nametag", "track" -> values.addAll(List.of("on", "off"));
+            case "memory" -> values.addAll(List.of("clear", "status"));
+            case "remember" -> values.addAll(service.get(a[0]).nodes().keySet());
+            case "wand" -> values.addAll(List.of("quest", "trigger", "gate"));
+            case "gate" -> values.addAll(List.of("pos1", "pos2", "set", "status", "reset", "off", "cancel", "autoclose"));
+            case "quest" -> values.addAll(List.of("farm", "mob", "off", "cancel"));
             case "reward" -> values.addAll(List.of("dialog", "quest"));
             case "page", "option", "root", "clearoptions" -> values.addAll(service.get(a[0]).nodes().keySet());
             default -> { }
         }
+        else if (a.length == 4 && a[1].equalsIgnoreCase("gate") && a[2].equalsIgnoreCase("autoclose")) values.addAll(List.of("10", "30", "60", "off"));
+        else if (a.length == 4 && a[1].equalsIgnoreCase("remember")) values.addAll(List.of("1", "2", "3", "4"));
         else if (a.length == 4 && a[1].equalsIgnoreCase("reward")) values.addAll(List.of("viti", "items", "none"));
-        else if (a.length == 4 && a[1].equalsIgnoreCase("option")) { values.addAll(List.of("END", "QUEST")); values.addAll(service.get(a[0]).nodes().keySet()); }
+        else if (a.length == 4 && a[1].equalsIgnoreCase("option")) { values.addAll(List.of("END", "QUEST", "OPEN", "DUNGEON_GLASS", "DUNGEON_MINION", "DUNGEON_BOSS", "DUNGEON_REWARD", "ACTION_")); values.addAll(service.get(a[0]).nodes().keySet()); }
         else if (a.length == 5 && a[1].equalsIgnoreCase("quest") && a[2].equalsIgnoreCase("mob")) values.addAll(List.of("COW", "PIG", "SHEEP", "CHICKEN", "ZOMBIE", "SKELETON"));
         String last = a.length == 0 ? "" : a[a.length - 1].toLowerCase(Locale.ROOT);
         return values.stream().filter(v -> v.toLowerCase(Locale.ROOT).startsWith(last)).sorted().toList();

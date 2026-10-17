@@ -15,7 +15,7 @@ import java.util.logging.Level;
 public final class NpcRenderer implements AutoCloseable {
     @FunctionalInterface public interface Input { void click(Player player, String npc, boolean attack); }
     private record Visible(NpcData.Definition definition, Interaction hitbox, int avatarId, UUID avatarUuid, ArmorStand base,
-                           Object modeled, Set<UUID> viewers, Set<UUID> failed) {}
+                           Object modeled, TextDisplay nametag, Set<UUID> viewers, Set<UUID> failed) {}
     private final JavaPlugin plugin;
     private final NamespacedKey key;
     private final Input input;
@@ -23,6 +23,10 @@ public final class NpcRenderer implements AutoCloseable {
     private final Map<Integer, Visible> avatars = new HashMap<>();
     private final Listener modelListener = new Listener() {};
     private final Set<Chunk> tickets = new HashSet<>();
+    private final Map<String, LinkedHashMap<UUID, NpcData.Point>> looking = new HashMap<>();
+    private final Map<String, Map<UUID, NpcData.Point>> rotations = new HashMap<>();
+    private final Map<String, NpcData.Point> modelRotations = new HashMap<>();
+    private final Set<String> rotationErrors = new HashSet<>();
     public NpcRenderer(JavaPlugin plugin, Input input) {
         this.plugin = plugin; this.input = input; key = new NamespacedKey(plugin, "npc_id");
         hookModel();
@@ -50,7 +54,7 @@ public final class NpcRenderer implements AutoCloseable {
             if (next == null || !next.enabled() || !next.equals(entities.get(id).definition())) remove(id);
         }
         for (var d : definitions.values()) if (d.enabled() && !entities.containsKey(d.id()) && Bukkit.getWorld(d.location().world()) != null) {
-            Interaction box = null; ArmorStand base = null; Object modeled = null;
+            Interaction box = null; ArmorStand base = null; Object modeled = null; TextDisplay nametag = null;
             try {
                 Location at = location(d.facingLocation());
                 Chunk chunk = at.getChunk(); chunk.addPluginChunkTicket(plugin); tickets.add(chunk);
@@ -82,11 +86,17 @@ public final class NpcRenderer implements AutoCloseable {
                 // Never disguise the real Interaction entity under the same network ID.
                 // Cancelling a use packet can resend its metadata, which is not Player metadata.
                 int avatarId = d.kind() == NpcData.Kind.HUMAN ? nextAvatarId() : -1;
-                Visible visible = new Visible(d, box, avatarId, UUID.randomUUID(), base, modeled, new HashSet<>(), new HashSet<>());
+                if (d.appearance().nametag()) nametag = at.getWorld().spawn(at.clone().add(0, d.eyeHeight() + .45, 0), TextDisplay.class, e -> {
+                    e.setPersistent(false); e.setGravity(false); e.setInvulnerable(true);
+                    e.setBillboard(Display.Billboard.CENTER); e.setShadowed(true); e.setSeeThrough(false);
+                    e.setDefaultBackground(false); e.setBackgroundColor(Color.fromARGB(0)); e.setLineWidth(240);
+                    e.text(NpcText.name(d.name())); e.getPersistentDataContainer().set(key, PersistentDataType.STRING, d.id());
+                });
+                Visible visible = new Visible(d, box, avatarId, UUID.randomUUID(), base, modeled, nametag, new HashSet<>(), new HashSet<>());
                 entities.put(d.id(), visible);
                 if (d.kind() == NpcData.Kind.HUMAN) avatars.put(avatarId, visible);
             } catch (Exception e) {
-                if (modeled != null) destroyModel(modeled); if (base != null) base.remove(); if (box != null) box.remove();
+                if (modeled != null) destroyModel(modeled); if (base != null) base.remove(); if (box != null) box.remove(); if (nametag != null) nametag.remove();
                 releaseUnusedTickets();
                 throw new IllegalStateException("NPC " + d.id() + " gagal ditampilkan. Periksa versi server/model.", e);
             }
@@ -123,6 +133,7 @@ public final class NpcRenderer implements AutoCloseable {
     }
     public void forget(Player player) {
         for (Visible v : entities.values()) {
+            endLook(v.definition().id(), player);
             if (v.viewers().remove(player.getUniqueId()) && player.isOnline()) hide(player, v);
             v.failed().remove(player.getUniqueId());
         }
@@ -131,7 +142,8 @@ public final class NpcRenderer implements AutoCloseable {
     private void show(Player player, Visible v) throws ReflectiveOperationException {
         var d = v.definition(); UUID uuid = v.avatarUuid(); int entityId = v.avatarId();
         Class<?> profileType = Class.forName("com.mojang.authlib.GameProfile");
-        Object profile = profileType.getConstructor(UUID.class, String.class).newInstance(uuid, "VN_" + d.id().substring(0, Math.min(13, d.id().length())));
+        hideInternalName(player, v);
+        Object profile = profileType.getConstructor(UUID.class, String.class).newInstance(uuid, profileName(v));
         if (!d.texture().isBlank()) {
             Class<?> property = Class.forName("com.mojang.authlib.properties.Property");
             Object texture = property.getConstructor(String.class, String.class, String.class)
@@ -175,6 +187,71 @@ public final class NpcRenderer implements AutoCloseable {
         Object connection = handle.getClass().getField("connection").get(handle);
         connection.getClass().getMethod("send", Class.forName("net.minecraft.network.protocol.Packet")).invoke(connection, packet);
     }
+    private static String profileName(Visible v) { return "VN_" + v.avatarUuid().toString().replace("-", "").substring(0, 13); }
+    private static String teamName(Visible v) { return "VT" + v.avatarUuid().toString().replace("-", "").substring(0, 14); }
+    /** Client-only team containing this fake profile alone; real player scoreboards are untouched. */
+    @SuppressWarnings("unchecked")
+    private static Object nameTeam(Visible v) throws ReflectiveOperationException {
+        Class<?> board = Class.forName("net.minecraft.world.scores.Scoreboard");
+        Class<?> team = Class.forName("net.minecraft.world.scores.PlayerTeam");
+        Object value = team.getConstructor(board, String.class).newInstance(board.getConstructor().newInstance(), teamName(v));
+        Class<?> visibility = Class.forName("net.minecraft.world.scores.Team$Visibility");
+        team.getMethod("setNameTagVisibility", visibility).invoke(value, visibility.getField("NEVER").get(null));
+        ((Collection<String>) team.getMethod("getPlayers").invoke(value)).add(profileName(v));
+        return value;
+    }
+    private static void hideInternalName(Player player, Visible v) throws ReflectiveOperationException {
+        Object team = nameTeam(v);
+        send(player, Class.forName("net.minecraft.network.protocol.game.ClientboundSetPlayerTeamPacket")
+                .getMethod("createAddOrModifyPacket", team.getClass(), boolean.class).invoke(null, team, true));
+    }
+    public void lookAt(String id, Player player) {
+        Visible v = entities.get(id); if (v == null || !v.definition().appearance().track()) return;
+        var targets = looking.computeIfAbsent(id, ignored -> new LinkedHashMap<>());
+        targets.put(player.getUniqueId(), point(player.getEyeLocation()));
+        if (v.definition().kind() == NpcData.Kind.HUMAN) {
+            if (!v.viewers().contains(player.getUniqueId())) return;
+            var map = rotations.computeIfAbsent(id, ignored -> new HashMap<>());
+            NpcData.Point next = NpcFacing.towards(v.definition(), targets.get(player.getUniqueId()), map.getOrDefault(player.getUniqueId(), v.definition().facingLocation()));
+            rotateHuman(player, v, next); map.put(player.getUniqueId(), next);
+        } else rotateModel(v, NpcFacing.towards(v.definition(), targets.values().iterator().next(), modelRotations.getOrDefault(id, v.definition().facingLocation())));
+    }
+    public void endLook(String id, Player player) {
+        var targets = looking.get(id); if (targets != null) { targets.remove(player.getUniqueId()); if (targets.isEmpty()) looking.remove(id); }
+        var map = rotations.get(id); if (map != null) map.remove(player.getUniqueId());
+        Visible v = entities.get(id); if (v == null) return;
+        if (v.definition().kind() == NpcData.Kind.HUMAN) {
+            if (player.isOnline() && v.viewers().contains(player.getUniqueId())) rotateHuman(player, v, v.definition().facingLocation());
+        } else if (targets == null || targets.isEmpty()) rotateModel(v, v.definition().facingLocation());
+        else rotateModel(v, NpcFacing.towards(v.definition(), targets.values().iterator().next(), modelRotations.getOrDefault(id, v.definition().facingLocation())));
+    }
+    private void rotateModel(Visible v, NpcData.Point pose) {
+        try {
+            v.base().setRotation(pose.yaw(), pose.pitch());
+            Class<?> type = Class.forName("com.ticxo.modelengine.api.model.ModeledEntity");
+            modelRotation(type, v.modeled(), "setYBodyRot", pose.yaw()); modelRotation(type, v.modeled(), "setYHeadRot", pose.yaw());
+            modelRotation(type, v.modeled(), "setXHeadRot", pose.pitch()); modelRotations.put(v.definition().id(), pose);
+        } catch (ReflectiveOperationException | RuntimeException e) { rotationFailure(v, e); }
+    }
+    private void rotateHuman(Player player, Visible v, NpcData.Point pose) {
+        Object buffer = null;
+        try {
+            byte yaw = (byte) Math.floor(pose.yaw() * 256 / 360), pitch = (byte) Math.floor(pose.pitch() * 256 / 360);
+            send(player, Class.forName("net.minecraft.network.protocol.game.ClientboundMoveEntityPacket$Rot")
+                    .getConstructor(int.class, byte.class, byte.class, boolean.class).newInstance(v.avatarId(), yaw, pitch, true));
+            Class<?> byteBuf = Class.forName("io.netty.buffer.ByteBuf"), friendly = Class.forName("net.minecraft.network.FriendlyByteBuf");
+            buffer = Class.forName("io.netty.buffer.Unpooled").getMethod("buffer").invoke(null);
+            Object data = friendly.getConstructor(byteBuf).newInstance(buffer);
+            friendly.getMethod("writeVarInt", int.class).invoke(data, v.avatarId()); friendly.getMethod("writeByte", int.class).invoke(data, (int) yaw);
+            Object codec = Class.forName("net.minecraft.network.protocol.game.ClientboundRotateHeadPacket").getField("STREAM_CODEC").get(null);
+            Object packet = Class.forName("net.minecraft.network.codec.StreamDecoder").getMethod("decode", Object.class).invoke(codec, data);
+            send(player, packet);
+        } catch (ReflectiveOperationException | RuntimeException e) { rotationFailure(v, e); }
+        finally { if (buffer != null) try { Class.forName("io.netty.buffer.ByteBuf").getMethod("release").invoke(buffer); } catch (ReflectiveOperationException ignored) { } }
+    }
+    private void rotationFailure(Visible v, Exception error) {
+        if (rotationErrors.add(v.definition().id())) plugin.getLogger().log(Level.WARNING, "Arah NPC gagal diperbarui: " + v.definition().id(), error);
+    }
     private static void modelRotation(Class<?> type, Object model, String setter, float angle) throws ReflectiveOperationException {
         Method method;
         try { method = type.getMethod(setter + "Immediately", float.class); }
@@ -187,6 +264,9 @@ public final class NpcRenderer implements AutoCloseable {
                     .getConstructor(int[].class).newInstance((Object) new int[]{v.avatarId()}));
             send(p, Class.forName("net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket")
                     .getConstructor(List.class).newInstance(List.of(v.avatarUuid())));
+            Object team = nameTeam(v);
+            send(p, Class.forName("net.minecraft.network.protocol.game.ClientboundSetPlayerTeamPacket")
+                    .getMethod("createRemovePacket", team.getClass()).invoke(null, team));
         }
         catch (ReflectiveOperationException e) { plugin.getLogger().fine("Profil NPC sudah tidak tersedia bagi " + p.getName()); }
     }
@@ -226,8 +306,9 @@ public final class NpcRenderer implements AutoCloseable {
     private void remove(String id) {
         Visible v = entities.remove(id); if (v == null) return;
         avatars.remove(v.avatarId());
+        looking.remove(id); rotations.remove(id); modelRotations.remove(id); rotationErrors.remove(id);
         for (UUID viewer : v.viewers()) { Player p = Bukkit.getPlayer(viewer); if (p != null) hide(p, v); }
-        if (v.modeled() != null) destroyModel(v.modeled()); if (v.base() != null) v.base().remove(); v.hitbox().remove();
+        if (v.modeled() != null) destroyModel(v.modeled()); if (v.base() != null) v.base().remove(); if (v.nametag() != null) v.nametag().remove(); v.hitbox().remove();
     }
     @Override public void close() {
         for (String id : List.copyOf(entities.keySet())) remove(id);
