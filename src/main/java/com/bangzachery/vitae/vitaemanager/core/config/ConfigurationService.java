@@ -68,6 +68,12 @@ public final class ConfigurationService {
             if (!(value instanceof String text)) {
                 throw invalid(path, "harus berupa teks MiniMessage");
             }
+            // Upgrade only exact bundled legacy wording, preserving administrator custom messages on disk.
+            if ((key.equals("carry-started") && text.equals("<green>Kamu mengangkat</green>"))
+                    || (key.equals("carry-riding") && text.equals("<green>Kamu sedang diangkat oleh</green>"))
+                    || (key.equals("carry-released") && text.equals("<green>Pemain berhasil diturunkan.</green>"))) {
+                text = defaults.getString(path);
+            }
             try {
                 messages.put(key, miniMessage.deserialize(text));
             } catch (ParsingException | IllegalArgumentException exception) {
@@ -82,7 +88,8 @@ public final class ConfigurationService {
                 integer(candidate, "roleplay.text-duration-ticks", 200, 20, 1200),
                 integer(candidate, "roleplay.ooc-radius", 30, 1, 128),
                 integer(candidate, "roleplay.max-text-length", 256, 16, 512),
-                integer(candidate, "roleplay.carry-distance", 2, 1, 6));
+                integer(candidate, "roleplay.carry-distance", 2, 1, 6),
+                decimal(candidate, "roleplay.text-head-clearance", 0.12, 0, 1));
         if (candidate.isSet("totem")) requireSection(candidate, "totem");
         TotemSettings totem = new TotemSettings(
                 integer(candidate, "totem.limit", 3, 1, 1000),
@@ -123,7 +130,20 @@ public final class ConfigurationService {
         return number;
     }
 
-    public record RoleplaySettings(int durationTicks, int oocRadius, int maxTextLength, int carryDistance) { }
+    private double decimal(YamlConfiguration configuration, String path, double fallback, double min, double max) {
+        Object value = configuration.get(path, fallback);
+        if (!(value instanceof Number number) || !Double.isFinite(number.doubleValue()) || number.doubleValue() < min || number.doubleValue() > max)
+            throw invalid(path, "harus angka finite " + min + " sampai " + max);
+        return number.doubleValue();
+    }
+
+    public record RoleplaySettings(int durationTicks, int oocRadius, int maxTextLength, int carryDistance,
+                                   double textHeadClearance) {
+        /** Preserve source compatibility for existing callers of the four-setting API. */
+        public RoleplaySettings(int durationTicks, int oocRadius, int maxTextLength, int carryDistance) {
+            this(durationTicks, oocRadius, maxTextLength, carryDistance, 0.12);
+        }
+    }
 
     private boolean bool(YamlConfiguration configuration, String path, boolean fallback) {
         Object value = configuration.get(path, fallback);

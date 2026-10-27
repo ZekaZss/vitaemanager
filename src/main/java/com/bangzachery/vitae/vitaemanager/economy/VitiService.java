@@ -38,6 +38,16 @@ public final class VitiService implements AutoCloseable {
     private final Path shopJournal;
     private final Set<UUID> shopSpent = new HashSet<>();
     private boolean shopFaulted;
+    private final Set<UUID> npcShopHeld = new HashSet<>();
+    /** Durable NPC journals own these holds; settlement is the only allowed debit while held. */
+    public void holdShopAccount(UUID player, boolean held) {
+        if (!Bukkit.isPrimaryThread()) throw new IllegalStateException("Hold akun harus di server thread");
+        if (held) npcShopHeld.add(player); else npcShopHeld.remove(player);
+    }
+    private boolean accountAvailable(Consumer<String> done, UUID... players) {
+        for (UUID player : players) if (npcShopHeld.contains(player)) { done.accept("viti-busy"); return false; }
+        return true;
+    }
 
     public VitiService(JavaPlugin plugin, VitiStore store, VitiPaper paper, VitiLedger initial) throws IOException {
         this.plugin = plugin; this.store = store; this.paper = paper; this.current = initial;
@@ -49,6 +59,14 @@ public final class VitiService implements AutoCloseable {
                 if (!id.toString().equals(line)) throw new IOException("Receipt toko tidak valid: " + shopJournal);
                 shopSpent.add(id);
             }
+        }
+        // Monetary obligations must be held even if unrelated NPC definitions/renderers fail.
+        try {
+            for (var receipt : com.bangzachery.vitae.vitaemanager.npc.NpcShopStore.readJournal(plugin.getDataFolder().toPath().resolve("npc/shops/journal")))
+                if (!receipt.terminal()) npcShopHeld.add(receipt.player());
+        } catch (IOException | RuntimeException error) {
+            shopFaulted = true;
+            plugin.getLogger().log(Level.SEVERE, "Journal toko NPC tidak dapat diverifikasi. Perubahan saldo dijeda; perbaiki journal dari bukti/backup sebelum restart. Jangan hapus receipt.", error);
         }
     }
 
@@ -99,10 +117,12 @@ public final class VitiService implements AutoCloseable {
     }
 
     public void transfer(Player from, Player to, BigDecimal amount, Consumer<String> done) {
+        if (!accountAvailable(done, from.getUniqueId(), to.getUniqueId())) return;
         transact(state -> seed(seed(state, from), to).transfer(from.getUniqueId(), to.getUniqueId(), amount), () -> {}, done);
     }
 
     public void admin(Player target, String operation, BigDecimal amount, Consumer<String> done) {
+        if (!accountAvailable(done, target.getUniqueId())) return;
         transact(state -> {
             VitiLedger seeded = seed(state, target);
             return switch (operation) {
@@ -115,6 +135,7 @@ public final class VitiService implements AutoCloseable {
     }
 
     public void withdraw(Player player, BigDecimal amount, Consumer<String> done) {
+        if (!accountAvailable(done, player.getUniqueId())) return;
         if (paper.emptySlot(player) < 0) { done.accept("viti-full"); return; }
         UUID id = UUID.randomUUID();
         transact(state -> seed(state, player).withdraw(player.getUniqueId(), id, amount), () -> {}, key -> {
@@ -167,6 +188,7 @@ public final class VitiService implements AutoCloseable {
     }
 
     public void redeem(Player player, Consumer<String> done) {
+        if (!accountAvailable(done, player.getUniqueId())) return;
         if (!ready(done)) return;
         try {
             VitiPaper.Value value = paper.read(player.getInventory().getItemInMainHand());
@@ -194,12 +216,26 @@ public final class VitiService implements AutoCloseable {
 
     // Stable receipt: retrying an NPC payment cannot credit the balance twice.
     public void reward(Player player, UUID receipt, BigDecimal amount, Consumer<String> done) {
+        if (!accountAvailable(done, player.getUniqueId())) return;
         if (!ready(done)) return;
         if (current.redeemed().contains(receipt)) { done.accept("viti-success"); return; }
         transact(state -> seed(state, player).redeem(player.getUniqueId(), receipt, amount, true), () -> {}, done);
     }
 
+    /** NPC inventory exchange uses the official ledger and its permanent receipt set. */
+    public void shopExchange(Player player, UUID receipt, BigDecimal amount, boolean selling, Consumer<String> done) {
+        if (!ready(done)) return;
+        if (current.redeemed().contains(receipt)) { done.accept("viti-success"); return; }
+        transact(state -> {
+            VitiLedger seeded = seed(state, player);
+            return seeded.shopExchange(player.getUniqueId(), receipt, amount, selling);
+        }, () -> {}, done);
+    }
+
+    public boolean shopAvailable() { return Bukkit.isPrimaryThread() && !closed && !shopFaulted && !busy; }
+
     public void reload(Consumer<String> done) {
+        if (!npcShopHeld.isEmpty()) { done.accept("viti-busy"); return; }
         if (!ready(done)) return;
         busy = true;
         writer.execute(() -> {

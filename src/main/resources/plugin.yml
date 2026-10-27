@@ -4,9 +4,13 @@ main: com.bangzachery.vitae.vitaemanager.Vitaemanager
 api-version: '1.21.4'
 authors: [Bang Zachery]
 description: Core roleplay Vitae - remake bertahap
-softdepend: [Essentials, AuraSkills, ModelEngine, Shopkeepers, MythicMobs, ItemsAdder, Multiverse-Core]
+softdepend: [Essentials, AuraSkills, ModelEngine, Shopkeepers, MythicMobs, ItemsAdder, Multiverse-Core, PlaceholderAPI, LuckPerms, GSit]
 
 commands:
+  sihir:
+    description: Koleksi dan penggunaan sihir Vitae
+    usage: /sihir
+
   music:
     description: Musik pribadi dan playlist Vitae
     usage: /music help
@@ -64,6 +68,10 @@ commands:
     aliases: [vitaequest]
 
 permissions:
+  vitae.sihir.admin:
+    description: Mengelola kepemilikan dan penggunaan sihir
+    default: op
+
   vitae.music:
     description: Memutar musik pribadi dari resource pack server
     default: true
@@ -85,6 +93,7 @@ permissions:
     description: Akses command utama administrator
     default: op
     children:
+      vitae.sihir.admin: true
       vitae.admin.music: true
       vitae.admin.npc: true
       vitae.admin.dungeon: true

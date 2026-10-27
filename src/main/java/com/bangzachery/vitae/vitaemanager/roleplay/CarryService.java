@@ -29,7 +29,9 @@ public final class CarryService implements Listener, AutoCloseable {
     private BukkitTask task;
     private boolean closed;
     private java.util.function.Predicate<Player> guard = player -> false;
+    private java.util.function.Predicate<Player> abilityGuard = player -> false;
     public void guard(java.util.function.Predicate<Player> guard) { this.guard = java.util.Objects.requireNonNull(guard); }
+    public void abilityGuard(java.util.function.Predicate<Player> guard) { this.abilityGuard = java.util.Objects.requireNonNull(guard); }
 
     public CarryService(JavaPlugin plugin, ConfigurationService configuration,
                         MessageService messages, RoleplayService roleplay) {
@@ -45,6 +47,10 @@ public final class CarryService implements Listener, AutoCloseable {
 
     public void toggle(Player carrier) {
         if (closed) return;
+        if (abilityGuard.test(carrier)) {
+            carrier.sendMessage(Component.text("Kamu tidak dapat memakai carry selama penguncian sihir."));
+            return;
+        }
         if (guard.test(carrier)) {
             releasePlayer(carrier.getUniqueId());
             carrier.sendMessage(Component.text("Carry tidak boleh digunakan dalam dungeon.", net.kyori.adventure.text.format.NamedTextColor.RED));
@@ -77,13 +83,13 @@ public final class CarryService implements Listener, AutoCloseable {
             messages.send(carrier, "carry-failed"); return;
         }
         pairs.add(carrier.getUniqueId(), rider.getUniqueId());
-        messages.send(carrier, "carry-started", Component.text(" " + rider.getName()));
-        messages.send(rider, "carry-riding", Component.text(" " + carrier.getName()
-                + ". Shift tidak dapat menurunkanmu; penggendong memakai /carry lagi untuk menurunkan."));
+        messages.send(carrier, "carry-started");
+        messages.send(rider, "carry-riding", Component.text(
+                " Shift tidak dapat menurunkanmu; penggendong memakai /carry lagi untuk menurunkan."));
     }
 
     private boolean eligible(Player player) {
-        return !guard.test(player) && player.isOnline() && !player.isDead() && player.getGameMode() != GameMode.SPECTATOR
+        return !guard.test(player) && !abilityGuard.test(player) && player.isOnline() && !player.isDead() && player.getGameMode() != GameMode.SPECTATOR
                 && player.getVehicle() == null
                 && player.getPassengers().stream().noneMatch(entity -> entity instanceof Player);
     }
@@ -98,6 +104,7 @@ public final class CarryService implements Listener, AutoCloseable {
             if (rider.getVehicle() == carrier) return false;
         }
         pairs.remove(carrierId, riderId);
+        if (rider != null && rider.isOnline()) messages.send(rider, "carry-lowered");
         return true;
     }
 
@@ -114,6 +121,12 @@ public final class CarryService implements Listener, AutoCloseable {
                 release(pair.getKey(), pair.getValue());
             }
         }
+    }
+
+    /** Release only pairs owned by this carry service before magic anchors a participant. */
+    public boolean releaseForMagic(Player player) {
+        releasePlayer(player.getUniqueId());
+        return pairs.available(player.getUniqueId());
     }
 
     private void reconcile() {

@@ -48,6 +48,10 @@ public final class NpcService implements Listener, AutoCloseable {
     private final NpcRenderer renderer;
     private final NpcQuest quests;
     private final NpcGates gates;
+    private final NpcShop shops;
+    private java.util.function.Predicate<Player> abilityBlocked = player -> false;
+    public void abilityGuard(java.util.function.Predicate<Player> guard) { abilityBlocked = Objects.requireNonNull(guard); }
+    public boolean isAbilityBlocked(Player player) { return abilityBlocked.test(player); }
     private record FarmSetup(UUID admin, NpcFarm.Handle work) {}
     private final Map<String, FarmSetup> farmSetups = new HashMap<>();
     private final Map<UUID, Session> sessions = new HashMap<>();
@@ -62,17 +66,19 @@ public final class NpcService implements Listener, AutoCloseable {
     private long ticks;
     public NpcService(JavaPlugin plugin, VitiService viti) throws IOException {
         this.plugin = plugin; this.viti = viti; awardKey = new NamespacedKey(plugin, "npc_last_award");
-        store = new NpcStore(plugin.getDataFolder().toPath().resolve("npc.json")); state = store.initialize();
+        store = new NpcStore(plugin.getDataFolder().toPath().resolve("npc/npc.json")); state = store.initialize();
         for (var d : state.npcs().values()) validateRuntime(d, false);
         for (var a : state.pending().values()) for (String bytes : a.reward().items()) decode(bytes);
         renderer = new NpcRenderer(plugin, this::modelClick);
         quests = new NpcQuest(plugin, () -> state.npcs().values(), this::questComplete, this::teleport);
         gates = new NpcGates(plugin, () -> state.npcs(), (id, gate) -> commit(state.put(get(id).withGate(gate))), this::log);
+        shops = new NpcShop(plugin, viti, this);
         Bukkit.getPluginManager().registerEvents(quests, plugin);
     }
     public void start() {
         try {
             gates.start();
+            shops.start();
             renderer.refresh(state.npcs());
             for (var d : state.npcs().values()) if (d.enabled()) quests.restore(d);
             task = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1, 1);
@@ -99,7 +105,8 @@ public final class NpcService implements Listener, AutoCloseable {
         if (d == null) throw new IllegalArgumentException("NPC tidak ditemukan: " + id + ". /vnpc list"); return d;
     }
     public boolean inUse(String id) {
-        return farmSetups.containsKey(id) || gates.busy(id) || quests.uses(id) || sessions.values().stream().anyMatch(s -> s.npc.id().equals(id));
+        var npc = state.npcs().get(id);
+        return npc != null && shops.hasPending(npc.token()) || farmSetups.containsKey(id) || gates.busy(id) || quests.uses(id) || sessions.values().stream().anyMatch(s -> s.npc.id().equals(id));
     }
     private void commit(NpcData.State next) throws IOException { store.save(next); state = next; }
     public void create(Player p, String id, String name) throws IOException {
@@ -149,7 +156,21 @@ public final class NpcService implements Listener, AutoCloseable {
             throw new IllegalArgumentException("Dunia NPC belum dimuat.");
     }
     public void delete(String id) throws IOException {
-        get(id); if (inUse(id)) throw new IllegalStateException("NPC sedang dipakai."); commit(state.remove(id)); gates.refresh(); renderer.refresh(state.npcs());
+        var old = get(id); if (inUse(id)) throw new IllegalStateException("NPC sedang dipakai atau mempunyai transaksi toko yang belum diselesaikan."); commit(state.remove(id)); gates.refresh(); renderer.refresh(state.npcs()); shops.delete(old);
+    }
+    public void shop(Player admin, String id, String[] args) throws IOException { shops.command(admin, get(id), args); }
+    public void copyShop(Player admin, String sourceId, String newId) throws IOException {
+        var source = get(sourceId);
+        if (!shops.configured(source)) throw new IllegalArgumentException("NPC asal belum memiliki katalog toko.");
+        if (state.npcs().containsKey(newId)) throw new IllegalArgumentException("ID NPC tujuan sudah digunakan.");
+        var fresh = NpcData.Definition.create(newId, source.name(), NpcRenderer.point(admin.getLocation()), NpcRenderer.point(admin.getLocation()));
+        var json = NpcStore.JSON.toJsonTree(fresh).getAsJsonObject();
+        for (String property : List.of("kind", "model", "texture", "signature", "eyeHeight", "facing", "appearance")) json.add(property, NpcStore.JSON.toJsonTree(source).getAsJsonObject().get(property));
+        var copy = NpcStore.JSON.fromJson(json, NpcData.Definition.class);
+        // Persist an isolated token/catalog first. An interrupted creation can only leave an orphan,
+        // never share the source catalog or copy quest progress/rewards/gate identity.
+        shops.copy(source, copy); commit(state.put(copy)); renderer.refresh(state.npcs());
+        message(admin, "Toko disalin sebagai " + newId + " (OFF), tanpa progres/hadiah quest. Aktifkan dengan /vnpc " + newId + " on.");
     }
     public void setupFarm(Player admin, String id, com.bangzachery.vitae.vitaemanager.whisper.WhisperArea area, int goal) {
         NpcData.Definition before = get(id);
@@ -239,7 +260,9 @@ public final class NpcService implements Listener, AutoCloseable {
     }
     public void reloadModule() throws IOException {
         if (state.npcs().keySet().stream().anyMatch(this::inUse)) throw new IllegalStateException("Selesaikan dialog/quest aktif sebelum reload NPC.");
+        var guard = abilityBlocked;
         NpcModule.stop(plugin); NpcModule.start(plugin, viti);
+        var replacement = NpcModule.active(plugin); if (replacement != null) replacement.abilityGuard(guard);
     }
     public void status(Player p) {
         NpcQuest.Run r = quests.run(p.getUniqueId()); var quota = state.quota(p.getUniqueId(), System.currentTimeMillis());
@@ -313,6 +336,7 @@ public final class NpcService implements Listener, AutoCloseable {
         s.display.text(text);
     }
     private boolean begin(Player p, NpcData.Definition d, boolean trigger, boolean preview, String specialText) {
+        if (isAbilityBlocked(p)) return false;
         if (closed || pushes.containsKey(p.getUniqueId()) || (!preview && !d.enabled()) || (!preview && !p.hasPermission("vitae.npc"))
                 || p.isDead() || p.getGameMode() == GameMode.SPECTATOR || p.getVehicle() != null || !p.getPassengers().isEmpty()
                 || sessions.containsKey(p.getUniqueId()) || quests.run(p.getUniqueId()) != null
@@ -364,14 +388,21 @@ public final class NpcService implements Listener, AutoCloseable {
             if (!s.player.hasPotionEffect(PotionEffectType.BLINDNESS)) { s.player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 30, 0, false, false)); s.blind = true; }
     }
     private void modelClick(Player p, String id, boolean attack) {
-        if (sessions.containsKey(p.getUniqueId())) confirm(p); else click(p, id);
+        if (isAbilityBlocked(p)) { message(p, "Kamu tidak dapat berinteraksi selama pengaruh sihir ini."); return; }
+        if (sessions.containsKey(p.getUniqueId())) { confirm(p); return; }
+        if (gates.selecting(p.getUniqueId())) return;
+        if (ticks - clicks.getOrDefault(p.getUniqueId(), -100L) < 6) return;
+        if (shops.interact(p, get(id), attack)) { clicks.put(p.getUniqueId(), ticks); return; }
+        click(p, id);
     }
     private void click(Player p, String id) {
+        if (isAbilityBlocked(p)) { message(p, "Kamu tidak dapat berinteraksi selama pengaruh sihir ini."); return; }
         if (gates.selecting(p.getUniqueId())) return;
         if (ticks - clicks.getOrDefault(p.getUniqueId(), -100L) < 6) return; clicks.put(p.getUniqueId(), ticks);
         begin(p, get(id), false, false, null);
     }
     private void confirm(Player p) {
+        if (isAbilityBlocked(p)) return;
         Session s = sessions.get(p.getUniqueId());
         if (s == null || s.phase != 2 || s.shown < s.node.text().codePointCount(0, s.node.text().length())
                 || ticks - clicks.getOrDefault(p.getUniqueId(), -100L) < 4) return;
@@ -573,7 +604,7 @@ public final class NpcService implements Listener, AutoCloseable {
         Player p = e.getPlayer(); if (sessions.containsKey(p.getUniqueId())) { e.setCancelled(true); confirm(p); return; }
         var hit = p.getWorld().rayTraceEntities(p.getEyeLocation(), p.getEyeLocation().getDirection(), 4.5, .1,
                 entity -> entity != p && renderer.id(entity) != null);
-        if (hit != null && hit.getHitEntity() != null) click(p, renderer.id(hit.getHitEntity()));
+        if (hit != null && hit.getHitEntity() != null) modelClick(p, renderer.id(hit.getHitEntity()), true);
     }
     @EventHandler(priority = EventPriority.LOWEST) public void interact(PlayerInteractEvent e) {
         if (!sessions.containsKey(e.getPlayer().getUniqueId())) return; e.setCancelled(true);
@@ -586,7 +617,7 @@ public final class NpcService implements Listener, AutoCloseable {
         if (id == null && !dialog) return;
         e.setCancelled(true);
         if (e.getHand() != EquipmentSlot.HAND) return;
-        if (dialog) confirm(e.getPlayer()); else click(e.getPlayer(), id);
+        if (dialog) confirm(e.getPlayer()); else modelClick(e.getPlayer(), id, false);
     }
     @EventHandler(priority = EventPriority.LOWEST) public void entityInteractAt(PlayerInteractAtEntityEvent e) { entityInteract(e); }
     @EventHandler(priority = EventPriority.LOWEST) public void virtualInteract(PlayerUseUnknownEntityEvent e) {
@@ -620,7 +651,7 @@ public final class NpcService implements Listener, AutoCloseable {
         for (Player p : Bukkit.getOnlinePlayers()) if (p.getOpenInventory().getTopInventory().getHolder() instanceof RewardMenu) p.closeInventory();
         for (Session s : List.copyOf(sessions.values())) end(s, false);
         for (BukkitTask push : pushes.values()) push.cancel(); pushes.clear();
-        queuedTriggers.clear(); triggerRetry.clear(); gates.close(); quests.close(); renderer.close(); HandlerList.unregisterAll(this);
+        queuedTriggers.clear(); triggerRetry.clear(); shops.close(); gates.close(); quests.close(); renderer.close(); HandlerList.unregisterAll(this);
         farmSetups.clear();
     }
 }

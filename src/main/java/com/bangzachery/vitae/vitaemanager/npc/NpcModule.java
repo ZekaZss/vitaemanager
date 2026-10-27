@@ -61,7 +61,7 @@ public final class NpcModule {
                     start(plugin, viti); report(plugin, sender); return true;
                 }
                 if (args.length == 2 && args[1].equalsIgnoreCase("off")) {
-                    NpcStore store = new NpcStore(plugin.getDataFolder().toPath().resolve("npc.json"));
+                    NpcStore store = new NpcStore(plugin.getDataFolder().toPath().resolve("npc/npc.json"));
                     NpcData.State state = store.initialize(); var definition = state.npcs().get(args[0]);
                     if (definition == null) throw new IllegalArgumentException("NPC tidak ditemukan: " + args[0]);
                     var json = NpcStore.JSON.toJsonTree(definition).getAsJsonObject(); json.addProperty("enabled", false);

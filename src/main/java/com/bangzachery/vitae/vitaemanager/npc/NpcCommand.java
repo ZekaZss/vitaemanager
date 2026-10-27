@@ -17,9 +17,9 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     private record Corners(Location a, Location b) {}
     private final NpcService service;
     private final Map<UUID, Corners> selections = new HashMap<>();
-    private static final List<String> TOPICS = List.of("dialog", "hadiah", "ladang", "mob", "pemicu", "gerbang", "tampilan", "ingatan", "kelola");
+    private static final List<String> TOPICS = List.of("dialog", "hadiah", "ladang", "mob", "pemicu", "gerbang", "tampilan", "ingatan", "kelola", "toko");
     private static final List<String> ACTIONS = List.of("help", "move", "stand", "look", "offset", "name", "nametag", "track", "remember", "memory", "height", "skin", "model", "page", "option",
-            "clearoptions", "root", "repeat", "speed", "wand", "pos1", "pos2", "trigger", "gate", "quest", "queststart", "reward", "on", "off", "preview", "reset", "delete");
+            "clearoptions", "root", "repeat", "speed", "wand", "pos1", "pos2", "trigger", "gate", "quest", "queststart", "reward", "on", "off", "preview", "reset", "delete", "shop", "copy");
     public NpcCommand(NpcService service) { this.service = service; }
     @Override public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (command.getName().equalsIgnoreCase("quest")) {
@@ -54,6 +54,8 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             require(args.length >= 2, "/vnpc <id> <pengaturan> atau /vnpc help");
             String id = args[0], action = args[1].toLowerCase(Locale.ROOT); var d = service.get(id);
             switch (action) {
+                case "shop" -> { service.shop(p, id, args); return true; }
+                case "copy" -> { require(args.length == 3, "/vnpc <id> copy <id-baru> (khusus toko)"); service.copyShop(p, id, args[2]); return true; }
                 case "help" -> {
                     require(args.length <= 3, "/vnpc <id> help [topik]");
                     help(sender, id, args.length == 3 ? args[2] : ""); return true;
@@ -309,6 +311,17 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         require(topic.isEmpty() || TOPICS.contains(topic), "Topik bantuan: " + String.join(", ", TOPICS) + ".");
         header(sender, topic.isEmpty() ? "Bantuan setup" : "Bantuan " + topic + " • " + id);
         switch (topic) {
+            case "toko" -> {
+                tip(sender, cmd + "shop edit", "Salin contoh item melalui editor; contoh tidak dikonsumsi");
+                tip(sender, cmd + "shop price 1 sell 64 85", "Pemain menjual 64 item produk 1 seharga 85 Viti");
+                tip(sender, cmd + "shop price 1 buy 1 10", "Pemain membeli satu item produk 1 seharga 10 Viti");
+                tip(sender, cmd + "shop template 1", "Isi katalog kosong: template 1 hasil panen, 2 barang, 3 buku, 4 potion");
+                tip(sender, cmd + "shop copy id_baru", "Salin toko dengan identitas/katalog sendiri, tanpa progres quest");
+                tip(sender, cmd + "shop status", "Periksa revisi katalog dan journal yang belum selesai");
+                tip(sender, cmd + "shop retry UUID_RECEIPT", "Verifikasi ulang bukti native transaksi; tidak menebak hasil");
+                note(sender, "Klik kiri/kanan NPC aktif membuka toko. Jongkok+klik kanan membuka editor untuk admin.");
+                note(sender, "Pilih slot produk, lalu klik contoh di inventory bawah; mode dan metadata dapat diubah. Simpan perlu konfirmasi.");
+            }
             case "dialog" -> {
                 tip(sender, cmd + "page start Halo, ada yang bisa kubantu?", "Tulis dialog awal");
                 tip(sender, cmd + "page cerita Aku menyimpan sebuah rahasia.", "Buat halaman lanjutan");
@@ -439,6 +452,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 tip(sender, id.equals("<id>") ? "/vnpc help pemicu" : cmd + "help pemicu", "Area pemicu dialog wajib");
                 tip(sender, id.equals("<id>") ? "/vnpc help gerbang" : cmd + "help gerbang", "Dialog yang membuka dinding dengan animasi");
                 tip(sender, id.equals("<id>") ? "/vnpc help kelola" : cmd + "help kelola", "Aktif/nonaktif, reset, hapus, dan daftar NPC");
+                tip(sender, id.equals("<id>") ? "/vnpc help toko" : cmd + "help toko", "Katalog toko Viti, editor, template, dan pemulihan transaksi");
                 note(sender, "Bantuan untuk NPC tertentu: /vnpc <id> help <topik>. Ganti <id> dengan ID NPC milikmu.");
             }
         }
@@ -460,6 +474,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         else if (a.length == 2 && service.current().npcs().containsKey(a[0])) values.addAll(ACTIONS);
         else if (a.length == 2 && a[0].equalsIgnoreCase("help")) values.addAll(TOPICS);
         else if (a.length == 3) switch (a[1].toLowerCase(Locale.ROOT)) {
+            case "shop" -> values.addAll(List.of("edit", "price", "template", "status", "retry", "copy"));
             case "help" -> values.addAll(TOPICS);
             case "trigger" -> values.addAll(List.of("set", "off"));
             case "nametag", "track" -> values.addAll(List.of("on", "off"));
@@ -472,6 +487,10 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             case "page", "option", "root", "clearoptions" -> values.addAll(service.get(a[0]).nodes().keySet());
             default -> { }
         }
+        else if (a.length == 4 && a[1].equalsIgnoreCase("shop") && a[2].equalsIgnoreCase("template")) values.addAll(List.of("1", "2", "3", "4"));
+        else if (a.length == 4 && a[1].equalsIgnoreCase("shop") && a[2].equalsIgnoreCase("price")) values.addAll(List.of("1", "2", "3", "4", "5"));
+        else if (a.length == 5 && a[1].equalsIgnoreCase("shop") && a[2].equalsIgnoreCase("price")) values.addAll(List.of("sell", "buy"));
+        else if (a.length == 6 && a[1].equalsIgnoreCase("shop") && a[2].equalsIgnoreCase("price")) values.addAll(List.of("1", "16", "32", "64"));
         else if (a.length == 4 && a[1].equalsIgnoreCase("gate") && a[2].equalsIgnoreCase("autoclose")) values.addAll(List.of("10", "30", "60", "off"));
         else if (a.length == 4 && a[1].equalsIgnoreCase("remember")) values.addAll(List.of("1", "2", "3", "4"));
         else if (a.length == 4 && a[1].equalsIgnoreCase("reward")) values.addAll(List.of("viti", "items", "none"));

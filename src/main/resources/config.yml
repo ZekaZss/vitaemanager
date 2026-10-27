@@ -8,6 +8,8 @@ roleplay:
   ooc-radius: 30
   max-text-length: 256
   carry-distance: 2
+  # Bottom of floating /me and /do text above the current pose's head, in blocks (0–1).
+  text-head-clearance: 0.12
 
 totem:
   limit: 3
@@ -84,9 +86,10 @@ messages:
   carry-no-target: '<red>Tidak ada pemain terlihat di depanmu dalam jarak carry, atau ada penghalang.</red>'
   carry-unavailable: '<red>Pemain sedang berkendara, digendong, menggendong, mati, atau spectator.</red>'
   carry-failed: '<red>Carry gagal diterapkan. Plugin lain mungkin membatalkan perpindahan.</red>'
-  carry-started: '<green>Kamu mengangkat</green>'
-  carry-riding: '<green>Kamu sedang diangkat oleh</green>'
-  carry-released: '<green>Pemain berhasil diturunkan.</green>'
+  carry-started: '<green>Kamu sedang menggendong seseorang.</green>'
+  carry-riding: '<green>Kamu sedang digendong seseorang.</green>'
+  carry-released: '<green>Kamu berhenti menggendong.</green>'
+  carry-lowered: '<green>Kamu sudah diturunkan.</green>'
   totem-help: |-
     <yellow>/vitae totem jumlah</yellow><gray> - Simpan batas penyerapan totem (1–1000).</gray>
     <yellow>/vitae reset totem</yellow><gray> - Reset cooldown pemain online; jumlah tetap.</gray>

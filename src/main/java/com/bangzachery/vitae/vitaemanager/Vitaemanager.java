@@ -48,6 +48,7 @@ public final class Vitaemanager extends JavaPlugin {
 
     private VitiService viti;
     private VitiListener vitiListener;
+    private com.bangzachery.vitae.vitaemanager.integration.PlaceholderHook placeholders;
 
     private ProfilePanel profiles;
     private RoleplayService roleplay;
@@ -62,10 +63,12 @@ public final class Vitaemanager extends JavaPlugin {
     private com.bangzachery.vitae.vitaemanager.story.StoryModule story;
     private com.bangzachery.vitae.vitaemanager.selection.SelectionService selection;
     private com.bangzachery.vitae.vitaemanager.music.MusicService music;
+    private com.bangzachery.vitae.vitaemanager.magic.MagicService magic;
 
     @Override
     public void onEnable() {
         try {
+            com.bangzachery.vitae.vitaemanager.core.data.DataLayout.initialize(getDataFolder().toPath());
             selection = new com.bangzachery.vitae.vitaemanager.selection.SelectionService(this);
             selection.start();
             getServer().getPluginManager().registerEvents(new com.bangzachery.vitae.vitaemanager.integration.VillagerTradeListener(), this);
@@ -92,7 +95,7 @@ public final class Vitaemanager extends JavaPlugin {
             MessageService messages = new MessageService(configuration);
 
             ServerControlStore store = new ServerControlStore(
-                    getDataFolder().toPath().resolve("server-control.yml")
+                    getDataFolder().toPath().resolve("server/state.yml")
             );
 
             controls = new ServerControlService(
@@ -114,6 +117,8 @@ public final class Vitaemanager extends JavaPlugin {
 
             viti = new VitiService(
                     this, vitiStore, moneyPaper, vitiStore.initialize());
+            placeholders = new com.bangzachery.vitae.vitaemanager.integration.PlaceholderHook(this, viti);
+            placeholders.start();
 
             var itemCatalog = ItemCatalog.fromPaper();
 
@@ -141,7 +146,7 @@ public final class Vitaemanager extends JavaPlugin {
                     this, controls, messages, profiles::openPlayers);
 
             TotemLimitStore totemStore = new TotemLimitStore(
-                    getDataFolder().toPath().resolve("totem-settings.yml")
+                    getDataFolder().toPath().resolve("totem/settings.yml")
             );
 
             totems = new TotemService(
@@ -154,7 +159,7 @@ public final class Vitaemanager extends JavaPlugin {
                     .collect(Collectors.toUnmodifiableSet());
 
             WhisperStore whisperStore = new WhisperStore(
-                    getDataFolder().toPath().resolve("whispers.yml"),
+                    getDataFolder().toPath().resolve("whisper/whispers.yml"),
                     vanillaSounds
             );
 
@@ -291,6 +296,13 @@ public final class Vitaemanager extends JavaPlugin {
             carry.guard(story::carryBlocked);
             music = new com.bangzachery.vitae.vitaemanager.music.MusicService(this);
             music.start();
+            magic = new com.bangzachery.vitae.vitaemanager.magic.MagicService(this);
+            magic.carryRelease(carry::releaseForMagic);
+            magic.start();
+            carry.abilityGuard(player -> magic.isAbilityBlocked(player.getUniqueId()));
+            evolution.abilityGuard(player -> magic.isAbilityBlocked(player.getUniqueId()));
+            var npcService = com.bangzachery.vitae.vitaemanager.npc.NpcModule.active(this);
+            if (npcService != null) npcService.abilityGuard(player -> magic.isAbilityBlocked(player.getUniqueId()));
             var musicExecutor = new com.bangzachery.vitae.vitaemanager.command.MusicCommand(music);
             executor.music(musicExecutor);
             PluginCommand musicCommand = getCommand("music");
@@ -301,7 +313,7 @@ public final class Vitaemanager extends JavaPlugin {
             getLogger().info(
                     "VitaeManager remake: fondasi, kontrol server, Viti, "
                             + "profil, roleplay/carry, totem, aturan item "
-                            + "dan bisikan area aktif."
+                            + "bisikan area, toko NPC, dan modul sihir aktif."
             );
 
             if (configuration.current().debug()) {
@@ -323,29 +335,38 @@ public final class Vitaemanager extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        if (music != null) music.close();
-        if (selection != null) selection.close();
-        if (story != null) story.close();
+        closeModule("magic", magic);
+        closeModule("music", music);
+        closeModule("selection", selection);
+        closeModule("story", story);
         com.bangzachery.vitae.vitaemanager.npc.NpcModule.stop(this);
-        if (evolution != null) evolution.close();
-        if (whispers != null) whispers.close();
+        closeModule("evolution", evolution);
+        closeModule("whispers", whispers);
 
-        if (itemListener != null) itemListener.close();
-        if (itemRules != null) itemRules.close();
+        closeModule("itemListener", itemListener);
+        closeModule("itemRules", itemRules);
 
-        if (totems != null) totems.close();
-        if (carry != null) carry.close();
-        if (roleplay != null) roleplay.close();
+        closeModule("totems", totems);
+        closeModule("carry", carry);
+        closeModule("roleplay", roleplay);
 
-        if (profiles != null) profiles.close();
+        closeModule("profiles", profiles);
 
-        if (vitiListener != null) vitiListener.close();
-        if (viti != null) viti.close();
+        closeModule("vitiListener", vitiListener);
+        closeModule("placeholders", placeholders);
+        closeModule("viti", viti);
 
-        if (controlListener != null) controlListener.close();
-        if (panel != null) panel.close();
-        if (controls != null) controls.close();
+        closeModule("controlListener", controlListener);
+        closeModule("panel", panel);
+        closeModule("controls", controls);
 
         getLogger().info("VitaeManager dimatikan.");
+    }
+    private void closeModule(String name, AutoCloseable module) {
+        if (module == null) return;
+        try { module.close(); }
+        catch (Exception | LinkageError error) {
+            getLogger().log(Level.SEVERE, "Cleanup modul " + name + " gagal; cleanup modul lain dilanjutkan.", error);
+        }
     }
 }

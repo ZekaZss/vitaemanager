@@ -67,6 +67,8 @@ public final class EvolutionService implements Listener, AutoCloseable {
     private long clock;
     private boolean reloading;
     private volatile boolean closed;
+    private Predicate<Player> abilityGuard = player -> false;
+    public void abilityGuard(Predicate<Player> guard) { abilityGuard = Objects.requireNonNull(guard); }
 
     public EvolutionService(
             JavaPlugin plugin,
@@ -79,7 +81,7 @@ public final class EvolutionService implements Listener, AutoCloseable {
         this.messages = messages;
 
         store = new EvolutionStore(
-                plugin.getDataFolder().toPath().resolve("evolution.yml"),
+                plugin.getDataFolder().toPath().resolve("evolution/evolution.yml"),
                 vanillaSounds
         );
 
@@ -380,6 +382,7 @@ public final class EvolutionService implements Listener, AutoCloseable {
     }
 
     private void open(Player player, String id) {
+        require(!abilityGuard.test(player), "Kamu tidak dapat mengaktifkan ritual selama penguncian sihir.");
         EvolutionAltar altar = altar(id);
         require(player.hasPermission("vitae.evolution"), "Kamu tidak memiliki izin ritual.");
         require(altar.enabled() && altar.targets().contains(player.getUniqueId()), "Altar belum aktif atau belum ditujukan untukmu.");
@@ -504,6 +507,7 @@ public final class EvolutionService implements Listener, AutoCloseable {
                 amounts.getOrDefault(index, 0), cursor.getAmount(), single);
     }
     private void deposit(Player player, Menu menu, ItemStack cursor, Map<Integer, Integer> additions) {
+        require(!abilityGuard.test(player), "Kamu tidak dapat memakai item selama penguncian sihir.");
         ready(menu.altar);
         require(near(player, menu.altar.table(), 8) && survival(player) && !player.isDead(), "Pemain meninggalkan altar.");
         Deposit old = current.deposits().get(menu.owner); require(old == null || old.transfer() == null, "Masih menyimpan setoran.");
@@ -579,6 +583,7 @@ public final class EvolutionService implements Listener, AutoCloseable {
         });
     }
     private void begin(Player player, Menu menu) {
+        require(!abilityGuard.test(player), "Kamu tidak dapat mengaktifkan ritual selama penguncian sihir.");
         Deposit d = current.deposits().get(menu.owner);
         require(d != null && d.transfer() == null && complete(menu.altar, d.items()), "Setoran belum lengkap."); ready(menu.altar);
         Ticket ticket = new Ticket(UUID.randomUUID(), menu.owner, menu.altar.id(), menu.altar.table(), Phase.PREPARED,
@@ -620,6 +625,7 @@ public final class EvolutionService implements Listener, AutoCloseable {
     }
 
     public void preview(Player player, String id) {
+        require(!abilityGuard.test(player), "Kamu tidak dapat mengaktifkan ritual selama penguncian sihir.");
         EvolutionAltar altar = altar(id);
         available(player, altar);
         ready(altar);

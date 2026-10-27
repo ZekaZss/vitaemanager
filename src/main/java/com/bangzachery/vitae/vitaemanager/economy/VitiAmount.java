@@ -75,4 +75,17 @@ public final class VitiAmount {
         return integer
                 + (parts.length == 2 ? "," + parts[1] : "");
     }
+
+    /** UI-only approximation; accounting and exact confirmations always retain the original decimal. */
+    public static String shortFormat(BigDecimal value) {
+        BigDecimal amount = checked(value);
+        BigDecimal divisor;
+        String suffix;
+        if (amount.compareTo(new BigDecimal("1000000")) >= 0) {
+            divisor = new BigDecimal("1000000"); suffix = "jt";
+        } else if (amount.compareTo(new BigDecimal("1000")) >= 0) {
+            divisor = new BigDecimal("1000"); suffix = "k";
+        } else return format(amount);
+        return format(amount.divide(divisor, 1, java.math.RoundingMode.DOWN)) + suffix;
+    }
 }

@@ -37,7 +37,8 @@ public final class VitiCommand implements CommandExecutor, TabCompleter {
             if (action.equals("help") && args.length == 1) { help(sender); return true; }
             if (action.equals("lihat") && args.length <= 1) {
                 if (sender instanceof Player player) messages.send(sender, "viti-balance",
-                        Component.text(" " + VitiAmount.format(service.balance(player)), NamedTextColor.WHITE));
+                        Component.text(" " + VitiAmount.shortFormat(service.balance(player)) + " Viti", NamedTextColor.WHITE)
+                                .hoverEvent(Component.text(VitiAmount.format(service.balance(player)) + " Viti")));
                 else messages.send(sender, "player-only");
                 return true;
             }

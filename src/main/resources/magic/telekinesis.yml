@@ -1,0 +1,44 @@
+name: Telekinesis
+description: Mengangkat dan menahan pemain lain selama tiga puluh detik.
+icon: ENDER_EYE
+radius: 20
+duration-seconds: 30
+maximum-rise: 7
+rise-per-tick: 0.05
+particles:
+  count: 8
+# Each stage supports a cues list; range is a recipient cap in blocks.
+# audience: nearby|owner|victims|participants; origin: center|owner|victim.
+sounds:
+  activation:
+    range: 28
+    cues:
+      - {id: ENTITY_WARDEN_SONIC_BOOM, volume: 0.55, pitch: 0.7}
+      - {id: ENTITY_WITHER_AMBIENT, volume: 0.6, pitch: 0.6}
+  formation:
+    range: 24
+    cues:
+      - {id: ENTITY_ENDER_DRAGON_FLAP, volume: 0.5, pitch: 0.5, interval-ticks: 60}
+      - {id: ENTITY_BAT_AMBIENT, volume: 1.0, pitch: 0.6, interval-ticks: 50, audience: victims, origin: victim}
+  active:
+    audience: victims
+    origin: victim
+    range: 24
+    cues:
+      - {id: ENTITY_BAT_AMBIENT, volume: 1.0, pitch: 0.6, interval-ticks: 50, audience: victims, origin: victim}
+      - {id: ENTITY_WARDEN_HEARTBEAT, volume: 0.4, pitch: 0.6, interval-ticks: 100, audience: nearby, origin: center}
+  release:
+    range: 24
+    cues:
+      - {id: ENTITY_ELDER_GUARDIAN_DEATH, volume: 0.5, pitch: 0.55}
+  ending:
+    range: 24
+    cues:
+      - {id: BLOCK_BEACON_DEACTIVATE, volume: 0.6, pitch: 0.5}
+
+messages:
+  started: "Sihir dimulai: {name}"
+  ended: "Sihir selesai. Cooldown bersama lima menit dimulai."
+
+camera:
+  interval-ticks: 10

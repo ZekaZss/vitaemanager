@@ -1,0 +1,25 @@
+{
+  "command": ".\\gradlew.bat clean build --no-configuration-cache",
+  "result": "BUILD SUCCESSFUL",
+  "suites": 41,
+  "allTests": {
+    "tests": 236,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "inventoryRegression": {
+    "tests": 9,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "jar": "C:\\Users\\Administrator\\IdeaProjects\\vitaemanager\\build\\libs\\vitaemanager-2.0.0-dev.1.jar",
+  "bytes": 836041,
+  "sha256": "58cd70f6f9ad79cde0e7776718838bede990d8d8937b61cced3d532f161d2873",
+  "zipIntegrity": "OK",
+  "javaClassMajor": 65,
+  "paperApi": "1.21.4",
+  "dependencyMetadata": "unchanged; ItemsAdder softdepend retained",
+  "liveMinecraftTested": false
+}

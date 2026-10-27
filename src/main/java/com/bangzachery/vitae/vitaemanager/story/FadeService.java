@@ -33,7 +33,7 @@ public final class FadeService implements Listener, AutoCloseable {
     private long tick;
     private boolean closed;
     public FadeService(JavaPlugin plugin)throws IOException {
-        this.plugin=plugin;store=new StoryStore<>(plugin.getDataFolder().toPath().resolve("fade.json"),Settings.class);settings=store.load(new Settings());
+        this.plugin=plugin;store=new StoryStore<>(plugin.getDataFolder().toPath().resolve("story/fade.json"),Settings.class);settings=store.load(new Settings());
         if(settings.version!=1 || settings.inTicks<1 || settings.inTicks>100 || settings.holdTicks<1 || settings.holdTicks>100 || settings.outTicks<1 || settings.outTicks>100)throw new IOException("fade.json tidak valid; file dipertahankan.");
     }
     public void start(){Bukkit.getPluginManager().registerEvents(this,plugin);task=Bukkit.getScheduler().runTaskTimer(plugin,this::tick,1,1);}

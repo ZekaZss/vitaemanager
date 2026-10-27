@@ -1,0 +1,32 @@
+name: Tunduk
+description: Memaksa pemain lain merangkak dan menahan seluruh interaksi selama dua puluh detik.
+icon: CRYING_OBSIDIAN
+radius: 20
+duration-seconds: 20
+particles:
+  count: 5
+# Each stage supports a cues list; range is a recipient cap in blocks.
+# audience: nearby|owner|victims|participants; origin: center|owner|victim.
+sounds:
+  activation:
+    range: 28
+    cues:
+      - {id: ENTITY_WARDEN_ROAR, volume: 0.65, pitch: 0.5}
+      - {id: ENTITY_WITHER_SPAWN, volume: 0.4, pitch: 0.6}
+  active:
+    range: 24
+    cues:
+      - {id: ENTITY_WARDEN_HEARTBEAT, volume: 0.7, pitch: 0.5, interval-ticks: 50, audience: victims}
+      - {id: BLOCK_RESPAWN_ANCHOR_AMBIENT, volume: 0.45, pitch: 0.55, interval-ticks: 100}
+  release:
+    range: 24
+    cues:
+      - {id: ENTITY_ENDER_DRAGON_HURT, volume: 0.4, pitch: 0.6}
+  ending:
+    range: 24
+    cues:
+      - {id: BLOCK_BEACON_DEACTIVATE, volume: 0.6, pitch: 0.5}
+
+messages:
+  started: "Sihir dimulai: {name}"
+  ended: "Sihir selesai. Cooldown bersama lima menit dimulai."

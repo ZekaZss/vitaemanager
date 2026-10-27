@@ -19,6 +19,7 @@ import org.bukkit.scheduler.BukkitTask;
 
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -61,11 +62,17 @@ public final class MusicService implements Listener, AutoCloseable {
 
     public MusicService(JavaPlugin plugin) {
         this.plugin = plugin;
-        path = plugin.getDataFolder().toPath().resolve("music.yml");
+        path = plugin.getDataFolder().toPath().resolve("music/music.yml");
     }
     public void start() {
         try {
-            if (!Files.exists(path)) plugin.saveResource("music.yml", false);
+            if (!Files.exists(path)) {
+                Files.createDirectories(path.getParent());
+                try (var defaults = plugin.getResource("music.yml")) {
+                    if (defaults == null) throw new IOException("Resource music.yml hilang");
+                    Files.copy(defaults, path);
+                }
+            }
             load();
         } catch (Exception exception) {
             failure = exception.getMessage();

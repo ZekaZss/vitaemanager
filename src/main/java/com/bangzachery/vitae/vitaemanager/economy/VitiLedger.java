@@ -109,6 +109,13 @@ public record VitiLedger(Map<UUID, Account> accounts, Map<UUID, Note> notes,
         return remove(from, amount).add(to, amount);
     }
 
+    /** One receipt covers the money side of an NPC shop exchange; safe to retry after restart. */
+    public VitiLedger shopExchange(UUID player, UUID receipt, BigDecimal amount, boolean selling) {
+        if (redeemed.contains(receipt)) return this;
+        if (selling) return redeem(player, receipt, amount, true);
+        return remove(player, amount).spentInShop(Set.of(receipt));
+    }
+
     public VitiLedger withdraw(UUID owner, UUID serial, BigDecimal amount) {
         if (notes.containsKey(serial) || redeemed.contains(serial)) throw new Failure("viti-note-invalid");
         VitiLedger debited = remove(owner, amount);

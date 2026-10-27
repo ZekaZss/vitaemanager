@@ -1,0 +1,44 @@
+name: Unlimited Misery
+description: Domain obsidian tertutup dengan pengaruh berdasarkan grup antihero.
+icon: OBSIDIAN
+radius: 30
+duration-seconds: 300
+healing:
+  level: 10
+  interval-ticks: 20
+debuff:
+  slowness-level: 3
+  damage-multiplier: 0.5
+particles:
+  count: 8
+# Each stage supports a cues list; range is a recipient cap in blocks.
+# audience: nearby|owner|victims|participants; origin: center|owner|victim.
+sounds:
+  activation:
+    range: 40
+    cues:
+      - {id: ENTITY_WITHER_SPAWN, volume: 0.7, pitch: 0.55}
+      - {id: ENTITY_WARDEN_ROAR, volume: 0.6, pitch: 0.6}
+  formation:
+    range: 36
+    cues:
+      - {id: ENTITY_WARDEN_HEARTBEAT, volume: 0.8, pitch: 0.55, interval-ticks: 60}
+      - {id: BLOCK_PORTAL_AMBIENT, volume: 0.6, pitch: 0.5, interval-ticks: 100}
+  active:
+    range: 32
+    cues:
+      - {id: ENTITY_WARDEN_AMBIENT, volume: 0.55, pitch: 0.6, interval-ticks: 120}
+  release:
+    range: 36
+    cues:
+      - {id: ENTITY_ENDER_DRAGON_GROWL, volume: 0.6, pitch: 0.5}
+      - {id: BLOCK_DEEPSLATE_BREAK, volume: 0.7, pitch: 0.5, interval-ticks: 80}
+  ending:
+    range: 32
+    cues:
+      - {id: ENTITY_WITHER_DEATH, volume: 0.55, pitch: 0.5}
+      - {id: BLOCK_BEACON_DEACTIVATE, volume: 0.6, pitch: 0.5}
+
+messages:
+  started: "Sihir dimulai: {name}"
+  ended: "Sihir selesai. Cooldown bersama lima menit dimulai."

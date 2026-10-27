@@ -53,7 +53,7 @@ public final class DungeonService implements Listener,AutoCloseable {
     private boolean closed;
     public DungeonService(JavaPlugin plugin,FadeService fade)throws IOException{
         this.plugin=plugin;this.fade=fade;mobs=new DungeonMobs(plugin);receiptKey=new NamespacedKey(plugin,"dungeon_rewards");
-        store=new StoryStore<>(plugin.getDataFolder().toPath().resolve("dungeons.json"),State.class);state=store.load(new State());state.validate();
+        store=new StoryStore<>(plugin.getDataFolder().toPath().resolve("story/dungeons.json"),State.class);state=store.load(new State());state.validate();
         for(Definition d:state.definitions.values())for(List<String> items:d.rewards.values())for(String item:items)NpcService.decode(item);
         camera=new DungeonCamera(plugin,this::teleport);
     }
